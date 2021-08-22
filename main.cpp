@@ -11,7 +11,7 @@ typedef int64_t i64;
 
 int main()
 {
-	const auto file_handle = CreateFileW(L"test/test.iso", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+	const auto file_handle = CreateFileW(L"test/obs.exe", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
@@ -35,8 +35,30 @@ int main()
 
 	const auto file_size = large_int.QuadPart;
 
-	printf("File size is: %lld\n\n", file_size);
+	printf("File size is: %lld\n", file_size);
 
+	const auto file_map = CreateFileMappingW(file_handle, 0, PAGE_READONLY, 0, 0, 0);
+	if (!file_map)
+	{
+		fprintf(stderr, "Failed to create file mapping\n");
+		return 1;
+	}
+
+	const auto file_view = MapViewOfFile(file_map, FILE_MAP_READ, 0, 0, 0);
+	if (!file_view)
+	{
+		fprintf(stderr, "Failed to create file view\n");
+		return 1;
+	}
+
+	char arroz[30];
+	for (int i=0; i< 30; i++)
+	{
+		arroz[i] = ((char*)file_view)[i];
+	}
+	printf(arroz);
+
+#if 0
 	const auto buffer = VirtualAlloc(0, file_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!buffer)
 	{
@@ -70,6 +92,7 @@ int main()
 
 		file_size_to_read -= bytes_read;
 	}
+#endif
 
 	return 0;
 }
