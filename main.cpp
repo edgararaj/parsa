@@ -93,28 +93,54 @@ int main()
 	auto haystack = main_file_view;
 	while (true)
 	{
-		const auto statement_start = strstr(haystack, "#include \"");
-		if (!statement_start) {
+		const auto statement_start = strstr(haystack, "#include");
+		if (!statement_start) break;
+		const auto statement_arg_start = strchr(statement_start, '\"');
+		if (!statement_arg_start) {
 			printf("Couldn't find opening \" for statement: #include\n");
 			break;
 		}
-		const auto statement_arg_start = strchr(statement_start, '\"');
-		if (!statement_arg_start) {
+
+		char* statement_arg_end = 0;
+		if (*(statement_arg_start+1)) {
+			statement_arg_end = strchr(statement_arg_start+1, '\"');
+		}
+
+		if (!statement_arg_end)
+		{
 			printf("Couldn't find closing \" for statement: #include\n");
 			break;
 		}
 
-		uint filename_size = 0;
-		auto statement_arg_end = statement_arg_start + 1;
-		for (; statement_arg_end && *statement_arg_end != '\"'; statement_arg_end++) filename_size++;
-		if (!filename_size) break;
+		const uint filename_size = (uint)(statement_arg_end - statement_arg_start) - 1; //@TODO: Better conversion for uint
+		if (!filename_size) {
+			printf("Invalid filename for statement: #include\n");
+			haystack = statement_arg_end;
+			continue;
+		}
 
 		auto& include = includes[includes_count];
 		include.location = statement_start;
 
 		{
+			//int unicode_test = IS_TEXT_UNICODE_NOT_UNICODE_MASK;
+			//const auto ret3 = IsTextUnicode(main_file_view, (int)strlen(main_file_view), &unicode_test); //@TODO: Better check for (int) conversion
+			//if (!ret3)
+			//{
+				//printf("File specified (for #include) is not unicode\n");
+				//haystack = statement_arg_end;
+				//continue;
+			//}
+
 			wchar_t file_name[64];
-			memcpy(file_name, statement_arg_start + 1, filename_size);
+			const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, filename_size, file_name, sizeof(file_name)/sizeof(file_name[0]));
+
+			if (!bytes_written)
+			{
+				printf("Failed to read unicode filename on statement: #include\n");
+				haystack = statement_arg_end;
+				continue;
+			}
 
 			const auto file = open_ro_file(file_name);
 			if (!file) {
