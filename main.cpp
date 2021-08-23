@@ -12,7 +12,9 @@ typedef unsigned int uint;
 #include <windows.h>
 
 struct include_statement {
-	char* location;
+	u64 start_offset;
+	u64 end_offset;
+	HANDLE file;
 	u64 file_size;
 };
 
@@ -120,7 +122,8 @@ int main()
 		}
 
 		auto& include = includes[includes_count];
-		include.location = statement_start;
+		include.start_offset = statement_start - main_file_view;
+		include.end_offset = statement_arg_end - main_file_view;
 
 		{
 			//int unicode_test = IS_TEXT_UNICODE_NOT_UNICODE_MASK;
@@ -142,14 +145,16 @@ int main()
 				continue;
 			}
 
+			file_name[bytes_written] = 0;
 			const auto file = open_ro_file(file_name);
 			if (!file) {
 				printf("Couldn't find file specified: %ls\n", file_name);
 				break;
 			}
 
+			include.file = file;
+
 			const auto file_size = get_file_size(file);
-			CloseHandle(file);
 			if (!file_size) {
 				printf("Couldn't get file size of file specified: %ls\n", file_name);
 				break;
@@ -162,19 +167,56 @@ int main()
 		haystack = statement_arg_end;
 	}
 
+	auto total_buffer_size = strlen(main_file_view);
 	for (uint i = 0; i < includes_count; i++)
 	{
 		const auto& include = includes[i];
+		total_buffer_size += include.file_size;
 	}
 
-#if 0
-	const auto buffer = VirtualAlloc(0, file_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	const auto buffer = (char*)VirtualAlloc(0, total_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!buffer)
 	{
 		fprintf(stderr, "Failed to allocate memory\n");
 		return 1;
 	}
 
+	char* buffer_end = buffer;
+	u64 prev_include_end_offset = 0;
+	for (uint i = 0; i < includes_count; i++)
+	{
+		const auto& include = includes[i];
+		const auto size = include.start_offset - prev_include_end_offset - 1;
+		memcpy(buffer_end, main_file_view + prev_include_end_offset + 1, size);
+		prev_include_end_offset = include.end_offset;
+		buffer_end += size;
+
+		auto file_size_to_read = include.file_size;
+		while (true)
+		{
+			const auto max_dword_value = std::numeric_limits<DWORD>::max();
+			const auto file_size_to_buff = (DWORD)(file_size_to_read > max_dword_value ? max_dword_value : file_size_to_read);
+			DWORD bytes_read;
+			const auto ret2 = ReadFile(include.file, buffer_end, file_size_to_buff, &bytes_read, 0);
+			if (!ret2)
+			{
+				fprintf(stderr, "Failed to read from file\n");
+				return 1;
+			}
+			if (!bytes_read)
+			{
+				printf("Successfuly read from file\n");
+				break;
+			}
+
+			buffer_end += bytes_read - 1;
+			file_size_to_read -= bytes_read;
+		}
+	}
+
+	memcpy(buffer_end, main_file_view + prev_include_end_offset + 1, strlen(main_file_view) - prev_include_end_offset);
+
+#if 0
 	const auto max_dword_value = std::numeric_limits<DWORD>::max();
 	const auto max_longlong_value = std::numeric_limits<LONGLONG>::max();
 	printf("Max DWORD value: %lu\n", max_dword_value);
