@@ -1,3 +1,5 @@
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <stdio.h>
 #include <stdint.h>
 #include <limits>
@@ -11,12 +13,35 @@ typedef unsigned int uint;
 #undef UNICODE
 #include <windows.h>
 
+#define ARRCOUNT(x) (sizeof(x)/sizeof(x[0]))
+
 struct include_statement {
-	u64 start_offset;
-	u64 end_offset;
-	HANDLE file;
+	char* start_location;
+	char* end_location;
+	HANDLE file_handle;
 	u64 file_size;
 };
+
+HANDLE create_wo_file(const wchar_t* file_name)
+{
+	HANDLE result = 0;
+
+	const auto file_handle = CreateFileW(file_name, GENERIC_WRITE, 0, 0, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, 0);
+
+	if (INVALID_HANDLE_VALUE == file_handle)
+	{
+		fprintf(stderr, "Failed to create file with name (%ls)\n", file_name);
+		const auto error = GetLastError();
+		if (ERROR_FILE_EXISTS == error)
+			fprintf(stderr, "Reason: File with name (%ls) already exists\n", file_name);
+
+		return result;
+	}
+
+	result = file_handle;
+
+	return result;
+}
 
 HANDLE open_ro_file(const wchar_t* file_name)
 {
@@ -26,12 +51,12 @@ HANDLE open_ro_file(const wchar_t* file_name)
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
-		fprintf(stderr, "Failed to open file\n");
+		fprintf(stderr, "Failed to open file (%ls)\n", file_name);
 		const auto error = GetLastError();
 		if (ERROR_FILE_NOT_FOUND == error)
-			fprintf(stderr, "Reason: File doesn't exist\n");
+			fprintf(stderr, "Reason: File (%ls) doesn't exist\n", file_name);
 		else
-			fprintf(stderr, "Reason: File already open\n");
+			fprintf(stderr, "Reason: File (%ls) is being used by other program\n", file_name);
 
 		return result;
 	}
@@ -47,10 +72,7 @@ u64 get_file_size(const HANDLE file_handle)
 	LARGE_INTEGER large_int;
 	const auto ret = GetFileSizeEx(file_handle, &large_int);
 	if (!ret)
-	{
-		fprintf(stderr, "Failed to get file size\n");
 		return result;
-	}
 
 	const auto file_size = large_int.QuadPart;
 
@@ -85,9 +107,18 @@ char* create_ro_file_view(const wchar_t* file_name)
 	return result;
 }
 
+void strip_file_ext(char* out, char* file_name)
+{
+	char* chr;
+	for (chr = file_name; *chr != '.'; chr++) {};
+
+	memcpy(out, file_name, chr - file_name);
+}
+
 int main()
 {
-	const auto main_file_view = create_ro_file_view(L"main.js");
+	wchar_t main_file_name[] = L"main.js";
+	const auto main_file_view = create_ro_file_view(main_file_name);
 
 	include_statement includes[64];
 	uint includes_count = 0;
@@ -103,27 +134,16 @@ int main()
 			break;
 		}
 
-		char* statement_arg_end = 0;
-		if (*(statement_arg_start+1)) {
-			statement_arg_end = strchr(statement_arg_start+1, '\"');
-		}
-
+		const auto statement_arg_end = strchr(statement_arg_start+1, '\"');
 		if (!statement_arg_end)
 		{
 			printf("Couldn't find closing \" for statement: #include\n");
 			break;
 		}
 
-		const uint filename_size = (uint)(statement_arg_end - statement_arg_start) - 1; //@TODO: Better conversion for uint
-		if (!filename_size) {
-			printf("Invalid filename for statement: #include\n");
-			haystack = statement_arg_end;
-			continue;
-		}
-
 		auto& include = includes[includes_count];
-		include.start_offset = statement_start - main_file_view;
-		include.end_offset = statement_arg_end - main_file_view;
+		include.start_location = statement_start;
+		include.end_location = statement_arg_end;
 
 		{
 			//int unicode_test = IS_TEXT_UNICODE_NOT_UNICODE_MASK;
@@ -135,28 +155,32 @@ int main()
 				//continue;
 			//}
 
-			wchar_t file_name[64];
-			const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, filename_size, file_name, sizeof(file_name)/sizeof(file_name[0]));
-
-			if (!bytes_written)
-			{
-				printf("Failed to read unicode filename on statement: #include\n");
+			const auto file_name_size = (uint)(statement_arg_end - statement_arg_start - 1); //@TODO: Better conversion for uint
+			if (!file_name_size) {
+				printf("Invalid file name for statement: #include\n");
 				haystack = statement_arg_end;
 				continue;
 			}
 
-			file_name[bytes_written] = 0;
-			const auto file = open_ro_file(file_name);
-			if (!file) {
-				printf("Couldn't find file specified: %ls\n", file_name);
-				break;
+			wchar_t file_name2[64];
+			const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, file_name_size, file_name2, ARRCOUNT(file_name2));
+
+			if (!bytes_written)
+			{
+				printf("Failed to interpret file name on statement: #include\n");
+				haystack = statement_arg_end;
+				continue;
 			}
 
-			include.file = file;
+			file_name2[bytes_written] = 0;
+			const auto file = open_ro_file(file_name2);
+			if (!file) break;
+
+			include.file_handle = file;
 
 			const auto file_size = get_file_size(file);
 			if (!file_size) {
-				printf("Couldn't get file size of file specified: %ls\n", file_name);
+				printf("Couldn't get file size of file (%ls)\n", file_name2);
 				break;
 			}
 
@@ -182,22 +206,23 @@ int main()
 	}
 
 	char* buffer_end = buffer;
-	u64 prev_include_end_offset = 0;
+	auto main_file_view_cursor = main_file_view;
 	for (uint i = 0; i < includes_count; i++)
 	{
 		const auto& include = includes[i];
-		const auto size = include.start_offset - prev_include_end_offset - 1;
-		memcpy(buffer_end, main_file_view + prev_include_end_offset + 1, size);
-		prev_include_end_offset = include.end_offset;
+		const auto size = include.start_location - main_file_view_cursor;
+		memcpy(buffer_end, main_file_view_cursor, size);
+		main_file_view_cursor = include.end_location + 1;
 		buffer_end += size;
 
 		auto file_size_to_read = include.file_size;
 		while (true)
 		{
 			const auto max_dword_value = std::numeric_limits<DWORD>::max();
-			const auto file_size_to_buff = (DWORD)(file_size_to_read > max_dword_value ? max_dword_value : file_size_to_read);
+			const auto to_read = (DWORD)(file_size_to_read > max_dword_value ? max_dword_value : file_size_to_read);
+
 			DWORD bytes_read;
-			const auto ret2 = ReadFile(include.file, buffer_end, file_size_to_buff, &bytes_read, 0);
+			const auto ret2 = ReadFile(include.file_handle, buffer_end, to_read, &bytes_read, 0);
 			if (!ret2)
 			{
 				fprintf(stderr, "Failed to read from file\n");
@@ -214,7 +239,46 @@ int main()
 		}
 	}
 
-	memcpy(buffer_end, main_file_view + prev_include_end_offset + 1, strlen(main_file_view) - prev_include_end_offset);
+	memcpy(buffer_end, main_file_view_cursor, strlen(main_file_view) - (main_file_view_cursor - main_file_view));
+
+	wchar_t* no_ext = 0;
+	wchar_t* ext = 0;
+	wchar_t* pt;
+
+	no_ext = wcstok(main_file_name, L".", &pt);
+
+	if (no_ext)
+		ext = wcstok(0, L".", &pt);
+
+	wchar_t out_file_name[64];
+	wcsncpy(out_file_name, no_ext, ARRCOUNT(out_file_name));
+	wcsncat(out_file_name, L".gen.", ARRCOUNT(out_file_name));
+	wcsncat(out_file_name, ext, ARRCOUNT(out_file_name));
+
+	const auto out_file_handle = create_wo_file(out_file_name);
+	if (!out_file_handle) return 1;
+
+	auto file_size_to_write = total_buffer_size;
+	while (true)
+	{
+		const auto max_dword_value = std::numeric_limits<DWORD>::max();
+		const auto to_write = (DWORD)(file_size_to_write > max_dword_value ? max_dword_value : file_size_to_write);
+
+		DWORD bytes_written;
+		const auto ret2 = WriteFile(out_file_handle, buffer, to_write, &bytes_written, 0);
+		if (!ret2)
+		{
+			fprintf(stderr, "Failed to write to file (%ls)\n", out_file_name);
+			return 1;
+		}
+		if (!bytes_written)
+		{
+			printf("Successfuly wrote to file (%ls)\n", out_file_name);
+			break;
+		}
+
+		file_size_to_write -= bytes_written;
+	}
 
 #if 0
 	const auto max_dword_value = std::numeric_limits<DWORD>::max();
