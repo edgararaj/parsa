@@ -15,7 +15,7 @@ typedef unsigned int uint;
 
 #define ARRCOUNT(x) (sizeof(x)/sizeof(x[0]))
 
-struct include_statement {
+struct IncludeStatement {
 	char* start_location;
 	char* end_location;
 	HANDLE file_handle;
@@ -81,12 +81,19 @@ u64 get_file_size(const HANDLE file_handle)
 	return result;
 }
 
-char* create_ro_file_view(const wchar_t* file_name)
+struct FileView {
+	char* content;
+	HANDLE handle;
+};
+
+FileView create_ro_file_view(const wchar_t* file_name)
 {
-	char* result = 0;
+	FileView result = {};
 
 	const auto file_handle = open_ro_file(file_name);
 	if (!file_handle) return result;
+
+	result.handle = file_handle;
 
 	const auto file_map = CreateFileMappingW(file_handle, 0, PAGE_READONLY, 0, 0, 0);
 	if (!file_map)
@@ -102,28 +109,76 @@ char* create_ro_file_view(const wchar_t* file_name)
 		return result;
 	}
 
-	result = file_view;
+	result.content = file_view;
 
 	return result;
 }
 
-void strip_file_ext(char* out, char* file_name)
+size_t convert_file_view_to_unix(char* out_buffer, FileView file_view, const wchar_t* main_file_name, size_t file_view_size)
 {
-	char* chr;
-	for (chr = file_name; *chr != '.'; chr++) {};
+	if (strcmp(&file_view.content[file_view_size-2], "\r\n") != 0)
+	{
+		printf("File (%ls) is unix\n", main_file_name);
+		return file_view_size - 1;
+	}
+	else if (strcmp(&file_view.content[file_view_size-1], "\n") != 0)
+	{
+		printf("File (%ls) may be corrupted\n", main_file_name);
+		return 0;
+	}
 
-	memcpy(out, file_name, chr - file_name);
+	printf("File (%ls) is dos\n", main_file_name);
+
+	size_t result = file_view_size;
+
+	auto out_buffer_end = out_buffer;
+	auto haystack = file_view.content;
+	while (true)
+	{
+		const auto dos_le = strstr(haystack, "\r\n");
+		if (!dos_le) {
+			break;
+		}
+
+		const auto size = dos_le - haystack;
+		memcpy(out_buffer_end, haystack, size);
+		out_buffer_end += size;
+		haystack = dos_le + 1;
+		result--;
+	}
+
+	return result - 2;
 }
 
 int main()
 {
 	wchar_t main_file_name[] = L"main.js";
-	const auto main_file_view = create_ro_file_view(main_file_name);
 
-	include_statement includes[64];
+	const auto main_file_view = create_ro_file_view(main_file_name);
+	if (!main_file_view.content)
+		return 1;
+
+	const auto main_file_view_size = get_file_size(main_file_view.handle);
+	if (!main_file_view_size) {
+		printf("Couldn't get file size of file (%ls)\n", main_file_name);
+		return 1;
+	}
+
+	const auto main_file_buffer = (char*)VirtualAlloc(0, main_file_view_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	if (!main_file_buffer)
+	{
+		fprintf(stderr, "Failed to allocate memory\n");
+		return 1;
+	}
+	const auto main_file_buffer_size = convert_file_view_to_unix(main_file_buffer, main_file_view, main_file_name, main_file_view_size);
+
+	IncludeStatement includes[64];
 	uint includes_count = 0;
 
-	auto haystack = main_file_view;
+	size_t buffer_size = 0;
+	auto prev_statement_arg_end = main_file_buffer;
+
+	auto haystack = main_file_buffer;
 	while (true)
 	{
 		const auto statement_start = strstr(haystack, "#include");
@@ -145,74 +200,69 @@ int main()
 		include.start_location = statement_start;
 		include.end_location = statement_arg_end;
 
-		{
-			//int unicode_test = IS_TEXT_UNICODE_NOT_UNICODE_MASK;
-			//const auto ret3 = IsTextUnicode(main_file_view, (int)strlen(main_file_view), &unicode_test); //@TODO: Better check for (int) conversion
-			//if (!ret3)
-			//{
-				//printf("File specified (for #include) is not unicode\n");
-				//haystack = statement_arg_end;
-				//continue;
-			//}
+		//int unicode_test = IS_TEXT_UNICODE_NOT_UNICODE_MASK;
+		//const auto ret3 = IsTextUnicode(main_file_view, (int)strlen(main_file_view), &unicode_test); //@TODO: Better check for (int) conversion
+		//if (!ret3)
+		//{
+		//printf("File specified (for #include) is not unicode\n");
+		//haystack = statement_arg_end;
+		//continue;
+		//}
 
-			const auto file_name_size = (uint)(statement_arg_end - statement_arg_start - 1); //@TODO: Better conversion for uint
-			if (!file_name_size) {
-				printf("Invalid file name for statement: #include\n");
-				haystack = statement_arg_end;
-				continue;
-			}
-
-			wchar_t file_name2[64];
-			const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, file_name_size, file_name2, ARRCOUNT(file_name2));
-
-			if (!bytes_written)
-			{
-				printf("Failed to interpret file name on statement: #include\n");
-				haystack = statement_arg_end;
-				continue;
-			}
-
-			file_name2[bytes_written] = 0;
-			const auto file = open_ro_file(file_name2);
-			if (!file) break;
-
-			include.file_handle = file;
-
-			const auto file_size = get_file_size(file);
-			if (!file_size) {
-				printf("Couldn't get file size of file (%ls)\n", file_name2);
-				break;
-			}
-
-			include.file_size = file_size;
+		const auto file_name_size = (uint)(statement_arg_end - statement_arg_start - 1); //@TODO: Better conversion for uint
+		if (!file_name_size) {
+			printf("Invalid file name for statement: #include\n");
+			haystack = statement_arg_end;
+			continue;
 		}
+
+		wchar_t file_name2[64];
+		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, file_name_size, file_name2, ARRCOUNT(file_name2));
+
+		if (!bytes_written)
+		{
+			printf("Failed to interpret file name on statement: #include\n");
+			haystack = statement_arg_end;
+			continue;
+		}
+
+		file_name2[bytes_written] = 0;
+		const auto file = open_ro_file(file_name2);
+		if (!file) break;
+
+		include.file_handle = file;
+
+		const auto file_size = get_file_size(file);
+		if (!file_size) {
+			printf("Couldn't get file size of file (%ls)\n", file_name2);
+			break;
+		}
+
+		include.file_size = file_size;
+		buffer_size += (statement_start - prev_statement_arg_end) + file_size;
+		prev_statement_arg_end = statement_arg_end;
 
 		includes_count++;
 		haystack = statement_arg_end;
 	}
 
-	auto total_buffer_size = strlen(main_file_view);
-	for (uint i = 0; i < includes_count; i++)
-	{
-		const auto& include = includes[i];
-		total_buffer_size += include.file_size;
-	}
+	buffer_size += main_file_buffer_size - (prev_statement_arg_end - main_file_buffer);
 
-	const auto buffer = (char*)VirtualAlloc(0, total_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	const auto buffer = (char*)VirtualAlloc(0, buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!buffer)
 	{
 		fprintf(stderr, "Failed to allocate memory\n");
 		return 1;
 	}
 
-	char* buffer_end = buffer;
-	auto main_file_view_cursor = main_file_view;
+	auto buffer_end = buffer;
+	auto main_file_buffer_cursor = main_file_buffer;
 	for (uint i = 0; i < includes_count; i++)
 	{
 		const auto& include = includes[i];
-		const auto size = include.start_location - main_file_view_cursor;
-		memcpy(buffer_end, main_file_view_cursor, size);
-		main_file_view_cursor = include.end_location + 1;
+		const auto size = include.start_location - main_file_buffer_cursor;
+		memcpy(buffer_end, main_file_buffer_cursor, size);
+		main_file_buffer_cursor = include.end_location + 1;
 		buffer_end += size;
 
 		auto file_size_to_read = include.file_size;
@@ -239,26 +289,28 @@ int main()
 		}
 	}
 
-	memcpy(buffer_end, main_file_view_cursor, strlen(main_file_view) - (main_file_view_cursor - main_file_view));
-
-	wchar_t* no_ext = 0;
-	wchar_t* ext = 0;
-	wchar_t* pt;
-
-	no_ext = wcstok(main_file_name, L".", &pt);
-
-	if (no_ext)
-		ext = wcstok(0, L".", &pt);
+	memcpy(buffer_end, main_file_buffer_cursor, main_file_buffer_size - (main_file_buffer_cursor - main_file_buffer));
 
 	wchar_t out_file_name[64];
-	wcsncpy(out_file_name, no_ext, ARRCOUNT(out_file_name));
-	wcsncat(out_file_name, L".gen.", ARRCOUNT(out_file_name));
-	wcsncat(out_file_name, ext, ARRCOUNT(out_file_name));
+	{
+		wchar_t* no_ext = 0;
+		wchar_t* ext = 0;
+		wchar_t* pt;
+
+		no_ext = wcstok(main_file_name, L".", &pt);
+
+		if (no_ext)
+			ext = wcstok(0, L".", &pt);
+
+		wcsncpy(out_file_name, no_ext, ARRCOUNT(out_file_name));
+		wcsncat(out_file_name, L".gen.", ARRCOUNT(out_file_name));
+		wcsncat(out_file_name, ext, ARRCOUNT(out_file_name));
+	}
 
 	const auto out_file_handle = create_wo_file(out_file_name);
 	if (!out_file_handle) return 1;
 
-	auto file_size_to_write = total_buffer_size;
+	auto file_size_to_write = buffer_size;
 	while (true)
 	{
 		const auto max_dword_value = std::numeric_limits<DWORD>::max();
