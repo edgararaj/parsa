@@ -255,13 +255,13 @@ int main()
 		include.file_size = file_buffer_size;
 
 		buffer_size += (statement_start - prev_statement_arg_end) + file_buffer_size;
-		prev_statement_arg_end = statement_arg_end;
+		prev_statement_arg_end = statement_arg_end + 1;
 
 		includes_count++;
 		haystack = statement_arg_end;
 	}
 
-	buffer_size += main_file_buffer_size - (prev_statement_arg_end - main_file_buffer);
+	buffer_size += main_file_buffer_size - (prev_statement_arg_end - main_file_buffer) + 1;
 
 	const auto buffer = (char*)VirtualAlloc(0, buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!buffer)
@@ -307,7 +307,10 @@ int main()
 		//}
 	}
 
-	memcpy(buffer_end, main_file_buffer_cursor, main_file_buffer_size - (main_file_buffer_cursor - main_file_buffer));
+	const auto size = main_file_buffer_size - (main_file_buffer_cursor - main_file_buffer);
+	memcpy(buffer_end, main_file_buffer_cursor, size);
+	buffer_end += size;
+	*buffer_end = '\n';
 
 	wchar_t out_file_name[64];
 	{

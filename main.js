@@ -1,7 +1,3 @@
-const text = document.createElement("p");
-text.innerText = "#include "test/text.txt"";
-document.body.appendChild(text);
-
-#include    "test/arroz.txt"
-
-const arroz = "ola";
+#include      "test/arroz.txt"
+ola ;djhsaijdlksajhd
+#include "test/text.txt"
