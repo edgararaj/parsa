@@ -15,10 +15,15 @@ typedef unsigned int uint;
 
 #define ARRCOUNT(x) (sizeof(x)/sizeof(x[0]))
 
+struct FileView {
+	char* content;
+	HANDLE handle;
+};
+
 struct IncludeStatement {
 	char* start_location;
 	char* end_location;
-	HANDLE file_handle;
+	char* file;
 	u64 file_size;
 };
 
@@ -81,11 +86,6 @@ u64 get_file_size(const HANDLE file_handle)
 	return result;
 }
 
-struct FileView {
-	char* content;
-	HANDLE handle;
-};
-
 FileView create_ro_file_view(const wchar_t* file_name)
 {
 	FileView result = {};
@@ -114,12 +114,14 @@ FileView create_ro_file_view(const wchar_t* file_name)
 	return result;
 }
 
-size_t convert_file_view_to_unix(char* out_buffer, FileView file_view, const wchar_t* main_file_name, size_t file_view_size)
+u64 convert_file_view_to_unix(char* out_buffer, FileView file_view, u64 file_view_size, const wchar_t* main_file_name)
 {
 	if (strcmp(&file_view.content[file_view_size-2], "\r\n") != 0)
 	{
 		printf("File (%ls) is unix\n", main_file_name);
-		return file_view_size - 1;
+		const auto size = file_view_size - 1;
+		memcpy(out_buffer, file_view.content, size);
+		return size;
 	}
 	else if (strcmp(&file_view.content[file_view_size-1], "\n") != 0)
 	{
@@ -129,7 +131,7 @@ size_t convert_file_view_to_unix(char* out_buffer, FileView file_view, const wch
 
 	printf("File (%ls) is dos\n", main_file_name);
 
-	size_t result = file_view_size;
+	u64 result = file_view_size;
 
 	auto out_buffer_end = out_buffer;
 	auto haystack = file_view.content;
@@ -147,7 +149,7 @@ size_t convert_file_view_to_unix(char* out_buffer, FileView file_view, const wch
 		result--;
 	}
 
-	return result - 2;
+	return result - 1;
 }
 
 int main()
@@ -170,7 +172,7 @@ int main()
 		fprintf(stderr, "Failed to allocate memory\n");
 		return 1;
 	}
-	const auto main_file_buffer_size = convert_file_view_to_unix(main_file_buffer, main_file_view, main_file_name, main_file_view_size);
+	const auto main_file_buffer_size = convert_file_view_to_unix(main_file_buffer, main_file_view, main_file_view_size, main_file_name);
 
 	IncludeStatement includes[64];
 	uint includes_count = 0;
@@ -216,8 +218,8 @@ int main()
 			continue;
 		}
 
-		wchar_t file_name2[64];
-		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, file_name_size, file_name2, ARRCOUNT(file_name2));
+		wchar_t file_name[64];
+		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, file_name_size, file_name, ARRCOUNT(file_name));
 
 		if (!bytes_written)
 		{
@@ -226,20 +228,33 @@ int main()
 			continue;
 		}
 
-		file_name2[bytes_written] = 0;
-		const auto file = open_ro_file(file_name2);
-		if (!file) break;
+		file_name[bytes_written] = 0;
 
-		include.file_handle = file;
+		const auto file_view = create_ro_file_view(file_name);
+		if (!file_view.content)
+			break;
 
-		const auto file_size = get_file_size(file);
-		if (!file_size) {
-			printf("Couldn't get file size of file (%ls)\n", file_name2);
+		const auto file_view_size = get_file_size(file_view.handle);
+		if (!file_view_size) {
+			printf("Couldn't get file size of file (%ls)\n", file_name);
 			break;
 		}
 
-		include.file_size = file_size;
-		buffer_size += (statement_start - prev_statement_arg_end) + file_size;
+		const auto file_buffer = (char*)VirtualAlloc(0, file_view_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+		if (!file_buffer)
+		{
+			fprintf(stderr, "Failed to allocate memory\n");
+			break;
+		}
+
+		include.file = file_buffer;
+
+		const auto file_buffer_size = convert_file_view_to_unix(file_buffer, file_view, file_view_size, file_name);
+		CloseHandle(file_view.handle);
+
+		include.file_size = file_buffer_size;
+
+		buffer_size += (statement_start - prev_statement_arg_end) + file_buffer_size;
 		prev_statement_arg_end = statement_arg_end;
 
 		includes_count++;
@@ -265,28 +280,31 @@ int main()
 		main_file_buffer_cursor = include.end_location + 1;
 		buffer_end += size;
 
-		auto file_size_to_read = include.file_size;
-		while (true)
-		{
-			const auto max_dword_value = std::numeric_limits<DWORD>::max();
-			const auto to_read = (DWORD)(file_size_to_read > max_dword_value ? max_dword_value : file_size_to_read);
+		memcpy(buffer_end, include.file, include.file_size);
+		buffer_end += include.file_size;
 
-			DWORD bytes_read;
-			const auto ret2 = ReadFile(include.file_handle, buffer_end, to_read, &bytes_read, 0);
-			if (!ret2)
-			{
-				fprintf(stderr, "Failed to read from file\n");
-				return 1;
-			}
-			if (!bytes_read)
-			{
-				printf("Successfuly read from file\n");
-				break;
-			}
+		//auto file_size_to_read = include.file_size;
+		//while (true)
+		//{
+			//const auto max_dword_value = std::numeric_limits<DWORD>::max();
+			//const auto to_read = (DWORD)(file_size_to_read > max_dword_value ? max_dword_value : file_size_to_read);
 
-			buffer_end += bytes_read - 1;
-			file_size_to_read -= bytes_read;
-		}
+			//DWORD bytes_read;
+			//const auto ret2 = ReadFile(include.file_handle, buffer_end, to_read, &bytes_read, 0);
+			//if (!ret2)
+			//{
+				//fprintf(stderr, "Failed to read from file\n");
+				//return 1;
+			//}
+			//if (!bytes_read)
+			//{
+				//printf("Successfuly read from file\n");
+				//break;
+			//}
+
+			//buffer_end += bytes_read - 1;
+			//file_size_to_read -= bytes_read;
+		//}
 	}
 
 	memcpy(buffer_end, main_file_buffer_cursor, main_file_buffer_size - (main_file_buffer_cursor - main_file_buffer));
@@ -317,8 +335,8 @@ int main()
 		const auto to_write = (DWORD)(file_size_to_write > max_dword_value ? max_dword_value : file_size_to_write);
 
 		DWORD bytes_written;
-		const auto ret2 = WriteFile(out_file_handle, buffer, to_write, &bytes_written, 0);
-		if (!ret2)
+		const auto ret = WriteFile(out_file_handle, buffer, to_write, &bytes_written, 0);
+		if (!ret)
 		{
 			fprintf(stderr, "Failed to write to file (%ls)\n", out_file_name);
 			return 1;
