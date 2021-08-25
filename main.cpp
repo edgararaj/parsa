@@ -178,8 +178,8 @@ int main()
 	uint includes_count = 0;
 
 	size_t buffer_size = 0;
-	auto prev_statement_arg_end = main_file_buffer;
 
+	auto prev_statement_arg_end = main_file_buffer;
 	auto haystack = main_file_buffer;
 	while (true)
 	{
@@ -312,7 +312,7 @@ int main()
 	buffer_end += size;
 	*buffer_end = '\n';
 
-	wchar_t out_file_name[64];
+	wchar_t out_file_path[64];
 	{
 		wchar_t* no_ext = 0;
 		wchar_t* ext = 0;
@@ -325,12 +325,13 @@ int main()
 		if (no_ext)
 			ext = wcstok(0, L".", &pt);
 
-		wcsncpy(out_file_name, no_ext, ARRCOUNT(out_file_name));
-		wcsncat(out_file_name, L".gen.", ARRCOUNT(out_file_name));
-		wcsncat(out_file_name, ext, ARRCOUNT(out_file_name));
+		wcsncpy(out_file_path, L"gen/", ARRCOUNT(out_file_path));
+		wcsncat(out_file_path, no_ext, ARRCOUNT(out_file_path));
+		wcsncat(out_file_path, L".", ARRCOUNT(out_file_path));
+		wcsncat(out_file_path, ext, ARRCOUNT(out_file_path));
 	}
 
-	const auto out_file_handle = create_wo_file(out_file_name);
+	const auto out_file_handle = create_wo_file(out_file_path);
 	if (!out_file_handle) return 1;
 
 	auto file_size_to_write = buffer_size;
@@ -343,12 +344,12 @@ int main()
 		const auto ret = WriteFile(out_file_handle, buffer, to_write, &bytes_written, 0);
 		if (!ret)
 		{
-			fprintf(stderr, "Failed to write to file (%ls)\n", out_file_name);
+			fprintf(stderr, "Failed to write to file (%ls)\n", out_file_path);
 			return 1;
 		}
 		if (!bytes_written)
 		{
-			printf("Successfuly wrote to file (%ls)\n", out_file_name);
+			printf("Successfuly wrote to file (%ls)\n", out_file_path);
 			break;
 		}
 

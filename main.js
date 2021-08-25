@@ -1,4 +1,3 @@
 #include      "test/arroz.txt"
 ola ;djhsaijdlksajhd
-#include "test/text.txt"
-#include "test/arroz.txt"
+#include "test/text.txt"#include "test/arroz.txt"
