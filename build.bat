@@ -20,13 +20,13 @@ if exist "%BuildDir%" (
 )
 
 if not exist %BuildDir% (
-mkdir %BuildDir%
-pushd %BuildDir%
+	mkdir %BuildDir%
+	pushd %BuildDir%
 
-cl %CommonCompilerFlags% %RootDir%\main.cpp -Fmparsa -Feparsa -link %CommonLinkerFlags% advapi32.lib
-call :CheckCompile
+	cl %CommonCompilerFlags% %RootDir%\main.cpp -Fmparsa -Feparsa -link %CommonLinkerFlags% advapi32.lib
+	call :CheckCompile
 
-popd
+	popd
 )
 
 exit /b

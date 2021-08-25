@@ -154,7 +154,7 @@ u64 convert_file_view_to_unix(char* out_buffer, FileView file_view, u64 file_vie
 
 int main()
 {
-	wchar_t main_file_name[] = L"main.js";
+	const wchar_t main_file_name[] = L"main.js";
 
 	const auto main_file_view = create_ro_file_view(main_file_name);
 	if (!main_file_view.content)
@@ -318,7 +318,9 @@ int main()
 		wchar_t* ext = 0;
 		wchar_t* pt;
 
-		no_ext = wcstok(main_file_name, L".", &pt);
+		wchar_t file_name[ARRCOUNT(main_file_name)];
+		wcsncpy(file_name, main_file_name, ARRCOUNT(main_file_name));
+		no_ext = wcstok(file_name, L".", &pt);
 
 		if (no_ext)
 			ext = wcstok(0, L".", &pt);
