@@ -25,7 +25,7 @@ if not exist %BuildDir% (
 	mkdir %BuildDir%
 	pushd %BuildDir%
 
-	cl %CommonCompilerFlags% %RootDir%\main.cpp -Fmparsa -Feparsa -link %CommonLinkerFlags% advapi32.lib
+	cl %CommonCompilerFlags% "%RootDir%\%1" -Fmparsa -Feparsa -link %CommonLinkerFlags% advapi32.lib
 	call :CheckCompile
 
 	popd

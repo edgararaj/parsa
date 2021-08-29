@@ -18,4 +18,4 @@ if exist %GenDir% (
 
 if not exist %GenDir% mkdir %GenDir%
 
-build\parsa.exe
+build\parsa.exe %*

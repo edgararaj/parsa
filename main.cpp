@@ -10,10 +10,10 @@ typedef unsigned int uint;
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
-#undef UNICODE
+#undef _UNICODE
 #include <windows.h>
 
-#define ARRCOUNT(x) (sizeof(x)/sizeof(x[0]))
+#define ARR_COUNT(x) (sizeof(x)/sizeof(x[0]))
 
 struct FileView {
 	char* content;
@@ -152,9 +152,137 @@ u64 convert_file_view_to_unix(char* out_buffer, FileView file_view, u64 file_vie
 	return result - 1;
 }
 
-int main()
+struct ArgEntry
+{
+	union {
+		const char* const parser_tokens[2];
+		struct {
+			const char* const short_name;
+			const char* const long_name;
+		};
+	};
+	const char* const description;
+	const char* value;
+	bool already_filled;
+};
+
+int main(int argc, const char** argv)
 {
 	const wchar_t main_file_name[] = L"main.js";
+
+	ArgEntry arg_entries[] = {
+		{"o", "out", "Output directory/file", "."},
+		{0, 0, "Directory or file(s) to preprocess", "*"}
+	};
+
+	if (argc <= 1)
+	{
+		printf("Specify directory or file(s) to preprocess\n");
+		return 1;
+	}
+
+	ArgEntry* entry_matched = 0;
+	for (int i = 1; i < argc; i++)
+	{
+		const auto arg_is_option = *argv[i] == '-';
+
+		if (!arg_is_option && entry_matched)
+		{
+			entry_matched->value = argv[i];
+			entry_matched->already_filled = 1;
+			entry_matched = 0;
+			continue;
+		}
+
+		for (int j = 0; j < ARR_COUNT(arg_entries); j++)
+		{
+			auto& entry = arg_entries[j];
+			if (arg_is_option)
+			{
+				if (!entry.short_name && !entry.long_name) continue;
+				auto next_char = argv[i]+1;
+				if (*next_char && entry.short_name && (strcmp(next_char, entry.short_name) == 0))
+				{
+					entry_matched = &entry;
+					break;
+				}
+				else if (*next_char == '-')
+				{
+					next_char++;
+					if (*next_char && entry.long_name && (strcmp(next_char, entry.long_name) == 0))
+					{
+						entry_matched = &entry;
+						break;
+					}
+				}
+			}
+			else
+			{
+				if (!entry.already_filled && !entry.short_name && !entry.long_name)
+				{
+					entry.value = argv[i];
+					entry.already_filled = 1;
+					break;
+				}
+			}
+		}
+
+		if (arg_is_option && !entry_matched)
+			printf("No option %s found\n", argv[i]);
+	}
+
+
+#if 0
+	ArgEntry* entry_matched = 0;
+	for (int i = 1; i < argc; i++)
+	{
+		bool is_next = entry_matched;
+		bool wrote_entry_matched = 0;
+
+		for (int j = 0; j < ARR_COUNT(arg_entries); j++)
+		{
+			auto& entry = arg_entries[j];
+
+			if (!entry.short_name && !entry.long_name)
+			{
+				if (!entry_matched && !entry.already_filled)
+				{
+					entry.value = argv[i];
+					entry.already_filled = 1;
+					break;
+				}
+				continue;
+			}
+
+			for (int token = 0; token < ARR_COUNT(entry.parser_tokens); token++)
+			{
+				const auto entry_token = entry.parser_tokens[token];
+				if (!entry_token) continue;
+
+				if (strcmp(argv[i], entry_token) == 0)
+				{
+					entry_matched = &entry;
+					wrote_entry_matched = 1;
+					break;
+				}
+			}
+
+			if (wrote_entry_matched) break;
+		}
+
+		if (is_next && entry_matched && !wrote_entry_matched)
+		{
+			entry_matched->value = argv[i];
+			entry_matched->already_filled = 1;
+			entry_matched = 0;
+		}
+	}
+#endif
+
+	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
+	{
+		printf("%s: %s\n", arg_entries[i].short_name, arg_entries[i].value);
+	}
 
 	const auto main_file_view = create_ro_file_view(main_file_name);
 	if (!main_file_view.content)
@@ -202,15 +330,6 @@ int main()
 		include.start_location = statement_start;
 		include.end_location = statement_arg_end;
 
-		//int unicode_test = IS_TEXT_UNICODE_NOT_UNICODE_MASK;
-		//const auto ret3 = IsTextUnicode(main_file_view, (int)strlen(main_file_view), &unicode_test); //@TODO: Better check for (int) conversion
-		//if (!ret3)
-		//{
-		//printf("File specified (for #include) is not unicode\n");
-		//haystack = statement_arg_end;
-		//continue;
-		//}
-
 		const auto file_name_size = (uint)(statement_arg_end - statement_arg_start - 1); //@TODO: Better conversion for uint
 		if (!file_name_size) {
 			printf("Invalid file name for statement: #include\n");
@@ -219,14 +338,7 @@ int main()
 		}
 
 		wchar_t file_name[64];
-		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, file_name_size, file_name, ARRCOUNT(file_name));
-
-		if (!bytes_written)
-		{
-			printf("Failed to interpret file name on statement: #include\n");
-			haystack = statement_arg_end;
-			continue;
-		}
+		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, file_name_size, file_name, ARR_COUNT(file_name));
 
 		file_name[bytes_written] = 0;
 
@@ -282,29 +394,6 @@ int main()
 
 		memcpy(buffer_end, include.file, include.file_size);
 		buffer_end += include.file_size;
-
-		//auto file_size_to_read = include.file_size;
-		//while (true)
-		//{
-			//const auto max_dword_value = std::numeric_limits<DWORD>::max();
-			//const auto to_read = (DWORD)(file_size_to_read > max_dword_value ? max_dword_value : file_size_to_read);
-
-			//DWORD bytes_read;
-			//const auto ret2 = ReadFile(include.file_handle, buffer_end, to_read, &bytes_read, 0);
-			//if (!ret2)
-			//{
-				//fprintf(stderr, "Failed to read from file\n");
-				//return 1;
-			//}
-			//if (!bytes_read)
-			//{
-				//printf("Successfuly read from file\n");
-				//break;
-			//}
-
-			//buffer_end += bytes_read - 1;
-			//file_size_to_read -= bytes_read;
-		//}
 	}
 
 	const auto size = main_file_buffer_size - (main_file_buffer_cursor - main_file_buffer);
@@ -318,17 +407,17 @@ int main()
 		wchar_t* ext = 0;
 		wchar_t* pt;
 
-		wchar_t file_name[ARRCOUNT(main_file_name)];
-		wcsncpy(file_name, main_file_name, ARRCOUNT(main_file_name));
+		wchar_t file_name[ARR_COUNT(main_file_name)];
+		wcsncpy(file_name, main_file_name, ARR_COUNT(main_file_name));
 		no_ext = wcstok(file_name, L".", &pt);
 
 		if (no_ext)
 			ext = wcstok(0, L".", &pt);
 
-		wcsncpy(out_file_path, L"gen/", ARRCOUNT(out_file_path));
-		wcsncat(out_file_path, no_ext, ARRCOUNT(out_file_path));
-		wcsncat(out_file_path, L".", ARRCOUNT(out_file_path));
-		wcsncat(out_file_path, ext, ARRCOUNT(out_file_path));
+		wcsncpy(out_file_path, L"gen/", ARR_COUNT(out_file_path));
+		wcsncat(out_file_path, no_ext, ARR_COUNT(out_file_path));
+		wcsncat(out_file_path, L".", ARR_COUNT(out_file_path));
+		wcsncat(out_file_path, ext, ARR_COUNT(out_file_path));
 	}
 
 	const auto out_file_handle = create_wo_file(out_file_path);
@@ -355,35 +444,6 @@ int main()
 
 		file_size_to_write -= bytes_written;
 	}
-
-#if 0
-	const auto max_dword_value = std::numeric_limits<DWORD>::max();
-	const auto max_longlong_value = std::numeric_limits<LONGLONG>::max();
-	printf("Max DWORD value: %lu\n", max_dword_value);
-
-	//const auto num_loops = (int)ceilf((float)file_size / (float)max_dword_value);
-	//printf("Number of loops: %d\n", num_loops);
-
-	auto file_size_to_read = file_size;
-	while (true)
-	{
-		const auto file_size_to_buff = (DWORD)(file_size_to_read > max_dword_value ? max_dword_value : file_size_to_read);
-		DWORD bytes_read;
-		const auto ret2 = ReadFile(file_handle, buffer, file_size_to_buff, &bytes_read, 0);
-		if (!ret2)
-		{
-			fprintf(stderr, "Failed to read from file\n");
-			return 1;
-		}
-		if (!bytes_read)
-		{
-			printf("Successfuly read from file\n");
-			break;
-		}
-
-		file_size_to_read -= bytes_read;
-	}
-#endif
 
 	return 0;
 }
