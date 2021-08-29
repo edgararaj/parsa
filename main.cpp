@@ -154,25 +154,91 @@ u64 convert_file_view_to_unix(char* out_buffer, FileView file_view, u64 file_vie
 
 struct ArgEntry
 {
-	union {
-		const char* const parser_tokens[2];
-		struct {
-			const char* const short_name;
-			const char* const long_name;
-		};
-	};
+	const char* const short_name;
+	const char* const long_name;
 	const char* const description;
+	const char* default_value;
 	const char* value;
 	bool already_filled;
 };
+
+void print_usage(const ArgEntry* const entries, const int entries_count)
+{
+	printf("Usage:\n");
+	printf("\tparsa");
+	for (int i = 0; i < entries_count; i++)
+	{
+		const auto& entry = entries[i];
+		if (strcmp(entry.long_name, "help") == 0) continue;
+
+		if (entry.short_name) // Is option
+		{
+			if (entry.long_name)
+				printf(" [--%s", entry.long_name);
+			else
+				printf(" [-%s", entry.short_name);
+
+			if (entry.default_value)
+				printf(" %s", entry.long_name);
+
+			printf("]");
+		}
+		else // Is argument
+		{
+			printf(" <%s>", entry.long_name);
+		}
+	}
+	printf("\n\n");
+
+	printf("Options:\n");
+	for (int i = 0; i < entries_count; i++)
+	{
+		const auto& entry = entries[i];
+		if (!entry.short_name) continue;
+
+		printf("\t-%s", entry.short_name);
+		if (entry.default_value)
+			printf(" %s", entry.long_name);
+
+		if (entry.long_name)
+		{
+			printf(", --%s", entry.long_name);
+			if (entry.default_value)
+				printf(" %s", entry.long_name);
+		}
+
+		if (entry.description)
+			printf(" (%s)", entry.description);
+
+		printf("\n");
+	}
+	printf("\n");
+
+
+	printf("Arguments:\n");
+	for (int i = 0; i < entries_count; i++)
+	{
+		const auto& entry = entries[i];
+		if (entry.short_name) continue;
+
+		printf("\t");
+
+		printf("%s", entry.long_name);
+		if (entry.description)
+			printf(" (%s)", entry.description);
+
+		printf("\n");
+	}
+}
 
 int main(int argc, const char** argv)
 {
 	const wchar_t main_file_name[] = L"main.js";
 
 	ArgEntry arg_entries[] = {
+		{"h", "help", "Display this message"},
 		{"o", "out", "Output directory/file", "."},
-		{0, 0, "Directory or file(s) to preprocess", "*"}
+		{0, "path...", "Directory or file(s) to preprocess", "*"},
 	};
 
 	if (argc <= 1)
@@ -199,17 +265,11 @@ int main(int argc, const char** argv)
 			auto& entry = arg_entries[j];
 			if (arg_is_option)
 			{
-				if (!entry.short_name && !entry.long_name) continue;
-				auto next_char = argv[i]+1;
-				if (*next_char && entry.short_name && (strcmp(next_char, entry.short_name) == 0))
+				if (entry.short_name)
 				{
-					entry_matched = &entry;
-					break;
-				}
-				else if (*next_char == '-')
-				{
-					next_char++;
-					if (*next_char && entry.long_name && (strcmp(next_char, entry.long_name) == 0))
+					auto next_char = argv[i]+1;
+					if (*next_char && strcmp(next_char, entry.short_name) == 0 ||
+							*(next_char++) == '-' && *next_char && entry.long_name && strcmp(next_char, entry.long_name) == 0)
 					{
 						entry_matched = &entry;
 						break;
@@ -218,7 +278,7 @@ int main(int argc, const char** argv)
 			}
 			else
 			{
-				if (!entry.already_filled && !entry.short_name && !entry.long_name)
+				if (!entry.already_filled && !entry.short_name)
 				{
 					entry.value = argv[i];
 					entry.already_filled = 1;
@@ -228,56 +288,38 @@ int main(int argc, const char** argv)
 		}
 
 		if (arg_is_option && !entry_matched)
-			printf("No option %s found\n", argv[i]);
+		{
+			printf("No option %s found!\n", argv[i]);
+			print_usage(arg_entries, ARR_COUNT(arg_entries));
+			return 0;
+		}
+
+		if (entry_matched)
+		{
+			if (!entry_matched->default_value)
+			{
+				if (entry_matched->short_name && strcmp(entry_matched->short_name, "h") == 0)
+				{
+					print_usage(arg_entries, ARR_COUNT(arg_entries));
+					return 0;
+				}
+
+				entry_matched->value = "";
+				entry_matched->already_filled = 1;
+				entry_matched = 0;
+			}
+		}
 	}
 
-
-#if 0
-	ArgEntry* entry_matched = 0;
-	for (int i = 1; i < argc; i++)
+	for (int j = 0; j < ARR_COUNT(arg_entries); j++)
 	{
-		bool is_next = entry_matched;
-		bool wrote_entry_matched = 0;
-
-		for (int j = 0; j < ARR_COUNT(arg_entries); j++)
+		auto& entry = arg_entries[j];
+		if (entry.short_name && strcmp(entry.short_name, "h") == 0 && entry.value)
 		{
-			auto& entry = arg_entries[j];
-
-			if (!entry.short_name && !entry.long_name)
-			{
-				if (!entry_matched && !entry.already_filled)
-				{
-					entry.value = argv[i];
-					entry.already_filled = 1;
-					break;
-				}
-				continue;
-			}
-
-			for (int token = 0; token < ARR_COUNT(entry.parser_tokens); token++)
-			{
-				const auto entry_token = entry.parser_tokens[token];
-				if (!entry_token) continue;
-
-				if (strcmp(argv[i], entry_token) == 0)
-				{
-					entry_matched = &entry;
-					wrote_entry_matched = 1;
-					break;
-				}
-			}
-
-			if (wrote_entry_matched) break;
-		}
-
-		if (is_next && entry_matched && !wrote_entry_matched)
-		{
-			entry_matched->value = argv[i];
-			entry_matched->already_filled = 1;
-			entry_matched = 0;
+			print_usage(arg_entries, ARR_COUNT(arg_entries));
+			return 0;
 		}
 	}
-#endif
 
 	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
 	{
