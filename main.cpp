@@ -14,6 +14,8 @@ typedef uint64_t u64;
 
 #define ARR_COUNT(x) (sizeof(x)/sizeof(x[0]))
 
+#include <strsafe.h>
+
 #include "args_parser.h"
 #include "file_ults.h"
 
@@ -32,31 +34,112 @@ int main(int argc, const char** argv)
 	SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
 	ArgEntry arg_entries[] = {
-		{"h", "help", "Display this message"},
-		{"o", "out", "Output directory/file", ""},
-		{0, "path...", "Directory or file(s) to preprocess", "*"},
+		{"h", "help", "Display this message", 0},
+		{"o", "out", "Output directory/file", "gen/", 1},
+		{0, "path", "Directory or file(s) to preprocess", "*", -1},
 	};
 
 	if (!parse_args(arg_entries, ARR_COUNT(arg_entries), argc, argv))
 		return 1;
 
-	wchar_t main_file_path[64];
+	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
 	{
-		const auto main_file_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "path...");
+		printf("--%s: %s\n", arg_entries[i].long_name, arg_entries[i].value);
+	}
+	printf("---------------------\n");
+
+	wchar_t main_file_path[64];
+	bool main_path_is_dir = 0;
+	{
+		const auto main_file_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "path");
+
+		{
+			auto c = main_file_path_arg;
+			for (; *c != 0; c++) {}
+			if (*(c-1) == '/' || *(c-1) == '\\' || *(c-1) == '*' || *(c-1) == '.')
+				main_path_is_dir = 1;
+		}
+
 		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, main_file_path_arg, -1, main_file_path, ARR_COUNT(main_file_path));
+		if (!bytes_written) {
+			printf("File path is too large\n");
+			return 1;
+		}
 		main_file_path[bytes_written] = 0;
 	}
 
 	wchar_t out_path[64];
+	bool out_path_is_dir = 0;
 	{
 		const auto out_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "out");
+
+		{
+			auto c = out_path_arg;
+			for (; *c != 0; c++) {}
+			if (*(c-1) == '/' || *(c-1) == '\\' || *(c-1) == '.')
+				out_path_is_dir = 1;
+		}
+
 		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, out_path_arg, -1, out_path, ARR_COUNT(out_path));
+		if (!bytes_written) {
+			printf("File path is too large\n");
+			return 1;
+		}
 		out_path[bytes_written] = 0;
 	}
 
-	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
+	if (main_path_is_dir && !out_path_is_dir)
 	{
-		printf("%s: %s\n", arg_entries[i].short_name, arg_entries[i].value);
+		printf("Please specify a directory to output\n");
+		return 1;
+	}
+
+	printf("\n");
+	{
+		WIN32_FIND_DATAW ffd;
+		auto search_handle = FindFirstFileW(main_file_path, &ffd);
+		if (INVALID_HANDLE_VALUE == search_handle) return 1;
+		do {
+			if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				printf("<DIR> ");
+
+			wprintf(L"%ls\n", ffd.cFileName);
+		}
+		while (FindNextFileW(search_handle, &ffd) != 0);
+
+		const auto error = GetLastError();
+		if (ERROR_NO_MORE_FILES != error)
+			return 1;
+
+		FindClose(search_handle);
+	}
+	printf("\n");
+
+	wchar_t out_file_path[64];
+	{
+		wcsncpy(out_file_path, out_path, ARR_COUNT(out_file_path));
+
+		if (out_path_is_dir)
+		{
+			const wchar_t* last_slash = 0;
+			for (const wchar_t* c = main_file_path; *c; c++)
+			{
+				if (*c == L'\\' || *c == L'/')
+					last_slash = c;
+			}
+
+			const wchar_t* src;
+			if (last_slash)
+				src = last_slash+1;
+			else
+				src = main_file_path;
+
+			if (FAILED(StringCchCatW(out_file_path, ARR_COUNT(out_file_path), src)))
+			{
+				printf("File path is too large\n");
+				return 1;
+			}
+		}
 	}
 
 	const auto main_file_buffer = read_file_to_unix_buffer(main_file_path);
@@ -148,25 +231,6 @@ int main(int argc, const char** argv)
 		memcpy(out_buffer_end, main_file_buffer_cursor, size);
 		out_buffer_end += size;
 		*out_buffer_end = '\n';
-	}
-
-	wchar_t out_file_path[64];
-	{
-		wchar_t* no_ext = 0;
-		wchar_t* ext = 0;
-		wchar_t* pt;
-
-		wchar_t file_path[ARR_COUNT(main_file_path)];
-		wcsncpy(file_path, main_file_path, ARR_COUNT(main_file_path));
-		no_ext = wcstok(file_path, L".", &pt);
-
-		if (no_ext)
-			ext = wcstok(0, L".", &pt);
-
-		wcsncpy(out_file_path, out_path, ARR_COUNT(out_file_path));
-		wcsncat(out_file_path, no_ext, ARR_COUNT(out_file_path));
-		wcsncat(out_file_path, L".gen.", ARR_COUNT(out_file_path));
-		wcsncat(out_file_path, ext, ARR_COUNT(out_file_path));
 	}
 
 	const auto out_file_handle = create_wo_file(out_file_path);

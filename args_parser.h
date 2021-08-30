@@ -5,8 +5,8 @@ struct ArgEntry
 	const char* const short_name;
 	const char* const long_name;
 	const char* const description;
-	const char* default_value;
 	const char* value;
+	int num_values;
 	bool already_filled;
 };
 
@@ -26,14 +26,15 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 			else
 				printf(" [--%s", entry.long_name);
 
-			if (entry.default_value)
-				printf(" %s", entry.long_name);
+			if (entry.num_values) printf(" %s", entry.long_name);
 
 			printf("]");
 		}
 		else // Is argument
 		{
-			printf(" <%s>", entry.long_name);
+			printf(" <%s", entry.long_name);
+			if (entry.num_values) printf("...");
+			printf(">");
 		}
 	}
 	printf("\n\n");
@@ -45,18 +46,19 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 		if (!entry.short_name) continue;
 
 		printf("\t\x1b[1m-%s\x1b[0m", entry.short_name);
-		if (entry.default_value)
-			printf(" %s", entry.long_name);
+		if (entry.num_values) printf(" %s", entry.long_name);
 
 		if (entry.long_name)
 		{
 			printf(", \x1b[1m--%s\x1b[0m", entry.long_name);
-			if (entry.default_value)
-				printf(" %s", entry.long_name);
+			if (entry.num_values) printf(" %s", entry.long_name);
 		}
 
 		if (entry.description)
-			printf(" (%s)", entry.description);
+		{
+			if (!entry.num_values) printf("\t");
+			printf("\t(%s)", entry.description);
+		}
 
 		printf("\n");
 	}
@@ -71,9 +73,14 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 
 		printf("\t");
 
-		printf("\x1b[1m%s\x1b[0m", entry.long_name);
+		printf("\x1b[1m%s", entry.long_name);
+		if (entry.num_values) printf("...");
+		printf("\x1b[0m");
 		if (entry.description)
-			printf(" (%s)", entry.description);
+		{
+			if (!entry.num_values) printf("\t");
+			printf("\t(%s)", entry.description);
+		}
 
 		printf("\n");
 	}
@@ -86,7 +93,7 @@ const char* get_arg_entry_value(const ArgEntry* entries, const int entries_count
 		if (entry.short_name && strcmp(entry.short_name, entry_name) == 0 ||
 			entry.long_name && strcmp(entry.long_name, entry_name) == 0)
 		{
-			return entry.value ? entry.value : entry.default_value;
+			return entry.value;
 		}
 	}
 
@@ -145,7 +152,7 @@ bool parse_args(ArgEntry* arg_entries, const int arg_entries_count, const int ar
 			}
 			else
 			{
-				if (!entry_matched->default_value)
+				if (!entry_matched->num_values)
 				{
 					if (entry_matched->short_name && strcmp(entry_matched->short_name, "h") == 0)
 					{
@@ -165,7 +172,7 @@ bool parse_args(ArgEntry* arg_entries, const int arg_entries_count, const int ar
 	for (int i = 0; i < arg_entries_count; i++)
 	{
 		auto& entry = arg_entries[i];
-		if (!entry.short_name && !entry.default_value && !entry.value)
+		if (!entry.short_name && !entry.value)
 		{
 			argument_missing = 1;
 			if (entry.description)

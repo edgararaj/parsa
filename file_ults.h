@@ -19,7 +19,7 @@ HANDLE create_wo_file(const wchar_t* file_path)
 		wprintf(L"Failed to create file (%ls)\n", file_path);
 		const auto error = GetLastError();
 		if (ERROR_FILE_EXISTS == error)
-			wprintf(L"Reason: File (%ls) already exists\n", file_path);
+			wprintf(L"Reason: File already exists\n");
 
 		return 0;
 	}
@@ -63,9 +63,9 @@ HANDLE open_ro_file(const wchar_t* file_path)
 		wprintf(L"Failed to open file (%ls)\n", file_path);
 		const auto error = GetLastError();
 		if (ERROR_FILE_NOT_FOUND == error)
-			wprintf(L"Reason: File (%ls) doesn't exist\n", file_path);
+			wprintf(L"Reason: File doesn't exist\n");
 		else
-			wprintf(L"Reason: File (%ls) is being used by other program\n", file_path);
+			wprintf(L"Reason: File is being used by other program\n");
 
 		return 0;
 	}
