@@ -176,4 +176,3 @@ bool parse_args(ArgEntry* arg_entries, const int arg_entries_count, const int ar
 	if (argument_missing) return 0;
 	return 1;
 }
-
