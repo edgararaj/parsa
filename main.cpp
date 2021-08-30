@@ -35,10 +35,10 @@ HANDLE create_wo_file(const wchar_t* file_name)
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
-		printf("Failed to create file with name (%ls)\n", file_name);
+		wprintf(L"Failed to create file with name (%ls)\n", file_name);
 		const auto error = GetLastError();
 		if (ERROR_FILE_EXISTS == error)
-			printf("Reason: File with name (%ls) already exists\n", file_name);
+			wprintf(L"Reason: File with name (%ls) already exists\n", file_name);
 
 		return result;
 	}
@@ -56,12 +56,12 @@ HANDLE open_ro_file(const wchar_t* file_name)
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
-		printf("Failed to open file (%ls)\n", file_name);
+		wprintf(L"Failed to open file (%ls)\n", file_name);
 		const auto error = GetLastError();
 		if (ERROR_FILE_NOT_FOUND == error)
-			printf("Reason: File (%ls) doesn't exist\n", file_name);
+			wprintf(L"Reason: File (%ls) doesn't exist\n", file_name);
 		else
-			printf("Reason: File (%ls) is being used by other program\n", file_name);
+			wprintf(L"Reason: File (%ls) is being used by other program\n", file_name);
 
 		return result;
 	}
@@ -118,18 +118,18 @@ u64 convert_file_view_to_unix(char* out_buffer, FileView file_view, u64 file_vie
 {
 	if (strcmp(&file_view.content[file_view_size-2], "\r\n") != 0)
 	{
-		printf("File (%ls) is unix\n", main_file_name);
+		wprintf(L"File (%ls) is unix\n", main_file_name);
 		const auto size = file_view_size - 1;
 		memcpy(out_buffer, file_view.content, size);
 		return size;
 	}
 	else if (strcmp(&file_view.content[file_view_size-1], "\n") != 0)
 	{
-		printf("File (%ls) may be corrupted\n", main_file_name);
+		wprintf(L"File (%ls) may be corrupted\n", main_file_name);
 		return 0;
 	}
 
-	printf("File (%ls) is dos\n", main_file_name);
+	wprintf(L"File (%ls) is dos\n", main_file_name);
 
 	u64 result = file_view_size;
 
@@ -362,7 +362,7 @@ int main(int argc, const char** argv)
 
 	const auto main_file_view_size = get_file_size(main_file_view.handle);
 	if (!main_file_view_size) {
-		printf("Couldn't get file size of file (%ls)\n", main_file_name);
+		wprintf(L"Couldn't get file size of file (%ls)\n", main_file_name);
 		return 1;
 	}
 
@@ -420,7 +420,7 @@ int main(int argc, const char** argv)
 
 		const auto file_view_size = get_file_size(file_view.handle);
 		if (!file_view_size) {
-			printf("Couldn't get file size of file (%ls)\n", file_name);
+			wprintf(L"Couldn't get file size of file (%ls)\n", file_name);
 			break;
 		}
 
@@ -505,12 +505,12 @@ int main(int argc, const char** argv)
 		const auto ret = WriteFile(out_file_handle, buffer, to_write, &bytes_written, 0);
 		if (!ret)
 		{
-			printf("Failed to write to file (%ls)\n", out_file_path);
+			wprintf(L"Failed to write to file (%ls)\n", out_file_path);
 			return 1;
 		}
 		if (!bytes_written)
 		{
-			printf("Successfuly wrote to file (%ls)\n", out_file_path);
+			wprintf(L"Successfuly wrote to file (%ls)\n", out_file_path);
 			break;
 		}
 
