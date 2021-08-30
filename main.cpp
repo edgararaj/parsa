@@ -4,9 +4,7 @@
 #include <stdint.h>
 #include <limits>
 
-typedef int64_t i64;
 typedef uint64_t u64;
-typedef unsigned int uint;
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -15,9 +13,11 @@ typedef unsigned int uint;
 
 #define ARR_COUNT(x) (sizeof(x)/sizeof(x[0]))
 
+#include "args_parser.h"
+
 struct FileView {
-	char* content;
 	HANDLE handle;
+	char* content;
 };
 
 struct IncludeStatement {
@@ -27,109 +27,116 @@ struct IncludeStatement {
 	u64 file_size;
 };
 
-HANDLE create_wo_file(const wchar_t* file_name)
+HANDLE create_wo_file(const wchar_t* file_path)
 {
-	HANDLE result = 0;
-
-	const auto file_handle = CreateFileW(file_name, GENERIC_WRITE, 0, 0, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, 0);
+	const auto file_handle = CreateFileW(file_path, GENERIC_WRITE, 0, 0, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, 0);
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
-		wprintf(L"Failed to create file with name (%ls)\n", file_name);
+		wprintf(L"Failed to create file (%ls)\n", file_path);
 		const auto error = GetLastError();
 		if (ERROR_FILE_EXISTS == error)
-			wprintf(L"Reason: File with name (%ls) already exists\n", file_name);
+			wprintf(L"Reason: File (%ls) already exists\n", file_path);
 
-		return result;
+		return 0;
 	}
 
-	result = file_handle;
-
-	return result;
+	return file_handle;
 }
 
-HANDLE open_ro_file(const wchar_t* file_name)
+bool write_file(const HANDLE file_handle, const wchar_t* file_path, const void* buffer, const u64 buffer_size)
 {
-	HANDLE result = 0;
+	auto file_size_to_write = buffer_size;
+	while (true)
+	{
+		const auto max_dword_value = std::numeric_limits<DWORD>::max();
+		const auto to_write = (DWORD)(file_size_to_write > max_dword_value ? max_dword_value : file_size_to_write);
 
-	const auto file_handle = CreateFileW(file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+		DWORD bytes_written;
+		const auto ret = WriteFile(file_handle, buffer, to_write, &bytes_written, 0);
+		if (!ret)
+		{
+			wprintf(L"Failed to write to file (%ls)\n", file_path);
+			break;
+		}
+		if (!bytes_written)
+		{
+			wprintf(L"Successfuly wrote to file (%ls)\n", file_path);
+			return 1;
+		}
+
+		file_size_to_write -= bytes_written;
+	}
+
+	return 0;
+}
+
+HANDLE open_ro_file(const wchar_t* file_path)
+{
+	const auto file_handle = CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
-		wprintf(L"Failed to open file (%ls)\n", file_name);
+		wprintf(L"Failed to open file (%ls)\n", file_path);
 		const auto error = GetLastError();
 		if (ERROR_FILE_NOT_FOUND == error)
-			wprintf(L"Reason: File (%ls) doesn't exist\n", file_name);
+			wprintf(L"Reason: File (%ls) doesn't exist\n", file_path);
 		else
-			wprintf(L"Reason: File (%ls) is being used by other program\n", file_name);
+			wprintf(L"Reason: File (%ls) is being used by other program\n", file_path);
 
-		return result;
+		return 0;
 	}
 
-	result = file_handle;
-	return result;
+	return file_handle;
 }
 
 u64 get_file_size(const HANDLE file_handle)
 {
-	u64 result = 0;
-
 	LARGE_INTEGER large_int;
 	const auto ret = GetFileSizeEx(file_handle, &large_int);
-	if (!ret)
-		return result;
+	if (!ret) return 0;
 
-	const auto file_size = large_int.QuadPart;
-
-	result = file_size;
-
-	return result;
+	return large_int.QuadPart;
 }
 
-FileView create_ro_file_view(const wchar_t* file_name)
+FileView create_ro_file_view(const wchar_t* file_path)
 {
-	FileView result = {};
-
-	const auto file_handle = open_ro_file(file_name);
-	if (!file_handle) return result;
-
-	result.handle = file_handle;
+	const auto file_handle = open_ro_file(file_path);
+	if (!file_handle) return {};
 
 	const auto file_map = CreateFileMappingW(file_handle, 0, PAGE_READONLY, 0, 0, 0);
 	if (!file_map)
 	{
 		printf("Failed to create file mapping\n");
-		return result;
+		return {};
 	}
 
 	const auto file_view = (char*)MapViewOfFile(file_map, FILE_MAP_READ, 0, 0, 0);
 	if (!file_view)
 	{
 		printf("Failed to create file view\n");
-		return result;
+		return {};
 	}
 
-	result.content = file_view;
-
-	return result;
+	return {.handle = file_handle, .content = file_view};
 }
 
-u64 convert_file_view_to_unix(char* out_buffer, FileView file_view, u64 file_view_size, const wchar_t* main_file_name)
+u64 convert_file_view_to_unix(char* out_buffer, const FileView file_view, const u64 file_view_size, const wchar_t* file_path)
 {
 	if (strcmp(&file_view.content[file_view_size-2], "\r\n") != 0)
 	{
-		wprintf(L"File (%ls) is unix\n", main_file_name);
+		wprintf(L"File (%ls) is unix\n", file_path);
 		const auto size = file_view_size - 1;
 		memcpy(out_buffer, file_view.content, size);
 		return size;
 	}
 	else if (strcmp(&file_view.content[file_view_size-1], "\n") != 0)
 	{
-		wprintf(L"File (%ls) may be corrupted\n", main_file_name);
+		wprintf(L"File (%ls) may be corrupted\n", file_path);
 		return 0;
 	}
 
-	wprintf(L"File (%ls) is dos\n", main_file_name);
+	wprintf(L"File (%ls) is dos\n", file_path);
 
 	u64 result = file_view_size;
 
@@ -152,99 +159,6 @@ u64 convert_file_view_to_unix(char* out_buffer, FileView file_view, u64 file_vie
 	return result - 1;
 }
 
-struct ArgEntry
-{
-	const char* const short_name;
-	const char* const long_name;
-	const char* const description;
-	const char* default_value;
-	const char* value;
-	bool already_filled;
-};
-
-void print_usage(const ArgEntry* const entries, const int entries_count)
-{
-	printf("Usage:\n");
-	printf("\t\x1b[1mparsa\x1b[0m");
-	for (int i = 0; i < entries_count; i++)
-	{
-		const auto& entry = entries[i];
-		if (strcmp(entry.long_name, "help") == 0) continue;
-
-		if (entry.short_name) // Is option
-		{
-			if (entry.long_name)
-				printf(" [--%s", entry.long_name);
-			else
-				printf(" [-%s", entry.short_name);
-
-			if (entry.default_value)
-				printf(" %s", entry.long_name);
-
-			printf("]");
-		}
-		else // Is argument
-		{
-			printf(" <%s>", entry.long_name);
-		}
-	}
-	printf("\n\n");
-
-	printf("Options:\n");
-	for (int i = 0; i < entries_count; i++)
-	{
-		const auto& entry = entries[i];
-		if (!entry.short_name) continue;
-
-		printf("\t\x1b[1m-%s\x1b[0m", entry.short_name);
-		if (entry.default_value)
-			printf(" %s", entry.long_name);
-
-		if (entry.long_name)
-		{
-			printf(", \x1b[1m--%s\x1b[0m", entry.long_name);
-			if (entry.default_value)
-				printf(" %s", entry.long_name);
-		}
-
-		if (entry.description)
-			printf(" (%s)", entry.description);
-
-		printf("\n");
-	}
-	printf("\n");
-
-
-	printf("Arguments:\n");
-	for (int i = 0; i < entries_count; i++)
-	{
-		const auto& entry = entries[i];
-		if (entry.short_name) continue;
-
-		printf("\t");
-
-		printf("\x1b[1m%s\x1b[0m", entry.long_name);
-		if (entry.description)
-			printf(" (%s)", entry.description);
-
-		printf("\n");
-	}
-}
-
-const char* get_arg_entry_value(ArgEntry* entries, const int entries_count, const char* entry_name) {
-	for (int i = 0; i < entries_count; i++)
-	{
-		auto& entry = entries[i];
-		if (entry.short_name && strcmp(entry.short_name, entry_name) == 0 ||
-			entry.long_name && strcmp(entry.long_name, entry_name) == 0)
-		{
-			return entry.value ? entry.value : entry.default_value;
-		}
-	}
-
-	return 0;
-}
-
 int main(int argc, const char** argv)
 {
 	// Enable conhost ascii escape sequences
@@ -259,110 +173,35 @@ int main(int argc, const char** argv)
 		{0, "path...", "Directory or file(s) to preprocess", "*"},
 	};
 
-	ArgEntry* entry_matched = 0;
-	for (int i = 1; i < argc; i++)
+	if (!parse_args(arg_entries, ARR_COUNT(arg_entries), argc, argv))
+		return 1;
+
+	wchar_t main_file_path[64];
 	{
-		const auto arg_is_option = *argv[i] == '-';
-
-		if (!arg_is_option && entry_matched)
-		{
-			entry_matched->value = argv[i];
-			entry_matched->already_filled = 1;
-			entry_matched = 0;
-			continue;
-		}
-
-		for (int j = 0; j < ARR_COUNT(arg_entries); j++)
-		{
-			auto& entry = arg_entries[j];
-			if (arg_is_option)
-			{
-				if (entry.short_name)
-				{
-					auto next_char = argv[i]+1;
-					if (*next_char && strcmp(next_char, entry.short_name) == 0 ||
-							*(next_char++) == '-' && *next_char && entry.long_name && strcmp(next_char, entry.long_name) == 0)
-					{
-						entry_matched = &entry;
-						break;
-					}
-				}
-			}
-			else
-			{
-				if (!entry.already_filled && !entry.short_name)
-				{
-					entry.value = argv[i];
-					entry.already_filled = 1;
-					break;
-				}
-			}
-		}
-
-		if (arg_is_option)
-		{
-			if (!entry_matched)
-			{
-				printf("No option %s found!\n", argv[i]);
-				print_usage(arg_entries, ARR_COUNT(arg_entries));
-				return 0;
-			}
-			else
-			{
-				if (!entry_matched->default_value)
-				{
-					if (entry_matched->short_name && strcmp(entry_matched->short_name, "h") == 0)
-					{
-						print_usage(arg_entries, ARR_COUNT(arg_entries));
-						return 0;
-					}
-
-					entry_matched->value = "";
-					entry_matched->already_filled = 1;
-					entry_matched = 0;
-				}
-			}
-		}
+		const auto main_file_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "path...");
+		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, main_file_path_arg, -1, main_file_path, ARR_COUNT(main_file_path));
+		main_file_path[bytes_written] = 0;
 	}
 
-	bool argument_missing = 0;
-	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
-	{
-		auto& entry = arg_entries[i];
-		if (!entry.short_name && !entry.default_value && !entry.value)
-		{
-			argument_missing = 1;
-			if (entry.description)
-				printf("Please specify: %s!\n", entry.description);
-		}
-	}
-
-	if (argument_missing) return 1;
-
-	const auto main_file_name_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "path...");
-	wchar_t main_file_name[64];
-	const auto bytes_written2 = MultiByteToWideChar(CP_UTF8, 0, main_file_name_arg, -1, main_file_name, ARR_COUNT(main_file_name));
-
-	main_file_name[bytes_written2] = 0;
-
-	const auto out_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "out");
 	wchar_t out_path[64];
-	const auto bytes_written3 = MultiByteToWideChar(CP_UTF8, 0, out_path_arg, -1, out_path, ARR_COUNT(out_path));
-
-	out_path[bytes_written3] = 0;
+	{
+		const auto out_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "out");
+		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, out_path_arg, -1, out_path, ARR_COUNT(out_path));
+		out_path[bytes_written] = 0;
+	}
 
 	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
 	{
 		printf("%s: %s\n", arg_entries[i].short_name, arg_entries[i].value);
 	}
 
-	const auto main_file_view = create_ro_file_view(main_file_name);
+	const auto main_file_view = create_ro_file_view(main_file_path);
 	if (!main_file_view.content)
 		return 1;
 
 	const auto main_file_view_size = get_file_size(main_file_view.handle);
 	if (!main_file_view_size) {
-		wprintf(L"Couldn't get file size of file (%ls)\n", main_file_name);
+		wprintf(L"Couldn't get file size of file (%ls)\n", main_file_path);
 		return 1;
 	}
 
@@ -372,12 +211,12 @@ int main(int argc, const char** argv)
 		printf("Failed to allocate memory\n");
 		return 1;
 	}
-	const auto main_file_buffer_size = convert_file_view_to_unix(main_file_buffer, main_file_view, main_file_view_size, main_file_name);
+	const auto main_file_buffer_size = convert_file_view_to_unix(main_file_buffer, main_file_view, main_file_view_size, main_file_path);
 
 	IncludeStatement includes[64];
-	uint includes_count = 0;
+	int includes_count = 0;
 
-	size_t buffer_size = 0;
+	u64 out_buffer_size = 0;
 
 	auto prev_statement_arg_end = main_file_buffer;
 	auto haystack = main_file_buffer;
@@ -402,76 +241,79 @@ int main(int argc, const char** argv)
 		include.start_location = statement_start;
 		include.end_location = statement_arg_end;
 
-		const auto file_name_size = (uint)(statement_arg_end - statement_arg_start - 1); //@TODO: Better conversion for uint
-		if (!file_name_size) {
-			printf("Invalid file name for statement: #include\n");
+		const auto include_file_path_size = (int)(statement_arg_end - statement_arg_start - 1); // @TODO
+		if (!include_file_path_size) {
+			printf("Invalid file path for statement: #include\n");
 			haystack = statement_arg_end;
 			continue;
 		}
 
-		wchar_t file_name[64];
-		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, file_name_size, file_name, ARR_COUNT(file_name));
+		wchar_t include_file_path[64];
+		{
+			const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, include_file_path_size, include_file_path, ARR_COUNT(include_file_path));
+			include_file_path[bytes_written] = 0;
+		}
 
-		file_name[bytes_written] = 0;
-
-		const auto file_view = create_ro_file_view(file_name);
-		if (!file_view.content)
+		const auto include_file_view = create_ro_file_view(include_file_path);
+		if (!include_file_view.content)
 			break;
 
-		const auto file_view_size = get_file_size(file_view.handle);
-		if (!file_view_size) {
-			wprintf(L"Couldn't get file size of file (%ls)\n", file_name);
+		const auto include_file_view_size = get_file_size(include_file_view.handle);
+		if (!include_file_view_size) {
+			wprintf(L"Couldn't get file size of file (%ls)\n", include_file_path);
 			break;
 		}
 
-		const auto file_buffer = (char*)VirtualAlloc(0, file_view_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-		if (!file_buffer)
+		const auto include_file_buffer = (char*)VirtualAlloc(0, include_file_view_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+		if (!include_file_buffer)
 		{
 			printf("Failed to allocate memory\n");
 			break;
 		}
 
-		include.file = file_buffer;
+		include.file = include_file_buffer;
 
-		const auto file_buffer_size = convert_file_view_to_unix(file_buffer, file_view, file_view_size, file_name);
-		CloseHandle(file_view.handle);
+		const auto include_file_buffer_size = convert_file_view_to_unix(include_file_buffer, include_file_view, include_file_view_size, include_file_path);
+		CloseHandle(include_file_view.handle);
 
-		include.file_size = file_buffer_size;
+		include.file_size = include_file_buffer_size;
 
-		buffer_size += (statement_start - prev_statement_arg_end) + file_buffer_size;
+		out_buffer_size += (statement_start - prev_statement_arg_end) + include_file_buffer_size;
 		prev_statement_arg_end = statement_arg_end + 1;
 
 		includes_count++;
 		haystack = statement_arg_end;
 	}
 
-	buffer_size += main_file_buffer_size - (prev_statement_arg_end - main_file_buffer) + 1;
+	out_buffer_size += main_file_buffer_size - (prev_statement_arg_end - main_file_buffer) + 1;
 
-	const auto buffer = (char*)VirtualAlloc(0, buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-	if (!buffer)
+	const auto out_buffer = (char*)VirtualAlloc(0, out_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	if (!out_buffer)
 	{
 		printf("Failed to allocate memory\n");
 		return 1;
 	}
 
-	auto buffer_end = buffer;
+	auto out_buffer_end = out_buffer;
 	auto main_file_buffer_cursor = main_file_buffer;
-	for (uint i = 0; i < includes_count; i++)
+	for (int i = 0; i < includes_count; i++)
 	{
 		const auto& include = includes[i];
 		const auto size = include.start_location - main_file_buffer_cursor;
-		memcpy(buffer_end, main_file_buffer_cursor, size);
+		memcpy(out_buffer_end, main_file_buffer_cursor, size);
 		main_file_buffer_cursor = include.end_location + 1;
-		buffer_end += size;
+		out_buffer_end += size;
 
-		memcpy(buffer_end, include.file, include.file_size);
-		buffer_end += include.file_size;
+		memcpy(out_buffer_end, include.file, include.file_size);
+		out_buffer_end += include.file_size;
 	}
 
-	const auto size = main_file_buffer_size - (main_file_buffer_cursor - main_file_buffer);
-	memcpy(buffer_end, main_file_buffer_cursor, size);
-	buffer_end += size;
-	*buffer_end = '\n';
+	{
+		const auto size = main_file_buffer_size - (main_file_buffer_cursor - main_file_buffer);
+		memcpy(out_buffer_end, main_file_buffer_cursor, size);
+		out_buffer_end += size;
+		*out_buffer_end = '\n';
+	}
 
 	wchar_t out_file_path[64];
 	{
@@ -479,9 +321,9 @@ int main(int argc, const char** argv)
 		wchar_t* ext = 0;
 		wchar_t* pt;
 
-		wchar_t file_name[ARR_COUNT(main_file_name)];
-		wcsncpy(file_name, main_file_name, ARR_COUNT(main_file_name));
-		no_ext = wcstok(file_name, L".", &pt);
+		wchar_t file_path[ARR_COUNT(main_file_path)];
+		wcsncpy(file_path, main_file_path, ARR_COUNT(main_file_path));
+		no_ext = wcstok(file_path, L".", &pt);
 
 		if (no_ext)
 			ext = wcstok(0, L".", &pt);
@@ -495,27 +337,8 @@ int main(int argc, const char** argv)
 	const auto out_file_handle = create_wo_file(out_file_path);
 	if (!out_file_handle) return 1;
 
-	auto file_size_to_write = buffer_size;
-	while (true)
-	{
-		const auto max_dword_value = std::numeric_limits<DWORD>::max();
-		const auto to_write = (DWORD)(file_size_to_write > max_dword_value ? max_dword_value : file_size_to_write);
-
-		DWORD bytes_written;
-		const auto ret = WriteFile(out_file_handle, buffer, to_write, &bytes_written, 0);
-		if (!ret)
-		{
-			wprintf(L"Failed to write to file (%ls)\n", out_file_path);
-			return 1;
-		}
-		if (!bytes_written)
-		{
-			wprintf(L"Successfuly wrote to file (%ls)\n", out_file_path);
-			break;
-		}
-
-		file_size_to_write -= bytes_written;
-	}
+	if (!write_file(out_file_handle, out_file_path, out_buffer, out_buffer_size))
+		return 1;
 
 	return 0;
 }
