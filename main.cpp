@@ -165,7 +165,7 @@ struct ArgEntry
 void print_usage(const ArgEntry* const entries, const int entries_count)
 {
 	printf("Usage:\n");
-	printf("\tparsa");
+	printf("\t\x1b[1mparsa\x1b[0m");
 	for (int i = 0; i < entries_count; i++)
 	{
 		const auto& entry = entries[i];
@@ -196,13 +196,13 @@ void print_usage(const ArgEntry* const entries, const int entries_count)
 		const auto& entry = entries[i];
 		if (!entry.short_name) continue;
 
-		printf("\t-%s", entry.short_name);
+		printf("\t\x1b[1m-%s\x1b[0m", entry.short_name);
 		if (entry.default_value)
 			printf(" %s", entry.long_name);
 
 		if (entry.long_name)
 		{
-			printf(", --%s", entry.long_name);
+			printf(", \x1b[1m--%s\x1b[0m", entry.long_name);
 			if (entry.default_value)
 				printf(" %s", entry.long_name);
 		}
@@ -223,7 +223,7 @@ void print_usage(const ArgEntry* const entries, const int entries_count)
 
 		printf("\t");
 
-		printf("%s", entry.long_name);
+		printf("\x1b[1m%s\x1b[0m", entry.long_name);
 		if (entry.description)
 			printf(" (%s)", entry.description);
 
@@ -231,21 +231,33 @@ void print_usage(const ArgEntry* const entries, const int entries_count)
 	}
 }
 
+const char* get_arg_entry_value(ArgEntry* entries, const int entries_count, const char* entry_name) {
+	for (int i = 0; i < entries_count; i++)
+	{
+		auto& entry = entries[i];
+		if (entry.short_name && strcmp(entry.short_name, entry_name) == 0 ||
+			entry.long_name && strcmp(entry.long_name, entry_name) == 0)
+		{
+			return entry.value ? entry.value : entry.default_value;
+		}
+	}
+
+	return 0;
+}
+
 int main(int argc, const char** argv)
 {
-	const wchar_t main_file_name[] = L"main.js";
+	// Enable conhost ascii escape sequences
+	const auto handle = GetStdHandle(STD_OUTPUT_HANDLE);
+	DWORD mode;
+	GetConsoleMode(handle, &mode);
+	SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
 	ArgEntry arg_entries[] = {
 		{"h", "help", "Display this message"},
-		{"o", "out", "Output directory/file", "."},
+		{"o", "out", "Output directory/file", ""},
 		{0, "path...", "Directory or file(s) to preprocess", "*"},
 	};
-
-	if (argc <= 1)
-	{
-		printf("Specify directory or file(s) to preprocess\n");
-		return 1;
-	}
 
 	ArgEntry* entry_matched = 0;
 	for (int i = 1; i < argc; i++)
@@ -287,39 +299,57 @@ int main(int argc, const char** argv)
 			}
 		}
 
-		if (arg_is_option && !entry_matched)
+		if (arg_is_option)
 		{
-			printf("No option %s found!\n", argv[i]);
-			print_usage(arg_entries, ARR_COUNT(arg_entries));
-			return 0;
-		}
-
-		if (entry_matched)
-		{
-			if (!entry_matched->default_value)
+			if (!entry_matched)
 			{
-				if (entry_matched->short_name && strcmp(entry_matched->short_name, "h") == 0)
+				printf("No option %s found!\n", argv[i]);
+				print_usage(arg_entries, ARR_COUNT(arg_entries));
+				return 0;
+			}
+			else
+			{
+				if (!entry_matched->default_value)
 				{
-					print_usage(arg_entries, ARR_COUNT(arg_entries));
-					return 0;
-				}
+					if (entry_matched->short_name && strcmp(entry_matched->short_name, "h") == 0)
+					{
+						print_usage(arg_entries, ARR_COUNT(arg_entries));
+						return 0;
+					}
 
-				entry_matched->value = "";
-				entry_matched->already_filled = 1;
-				entry_matched = 0;
+					entry_matched->value = "";
+					entry_matched->already_filled = 1;
+					entry_matched = 0;
+				}
 			}
 		}
 	}
 
-	for (int j = 0; j < ARR_COUNT(arg_entries); j++)
+	bool argument_missing = 0;
+	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
 	{
-		auto& entry = arg_entries[j];
-		if (entry.short_name && strcmp(entry.short_name, "h") == 0 && entry.value)
+		auto& entry = arg_entries[i];
+		if (!entry.short_name && !entry.default_value && !entry.value)
 		{
-			print_usage(arg_entries, ARR_COUNT(arg_entries));
-			return 0;
+			argument_missing = 1;
+			if (entry.description)
+				printf("Please specify: %s!\n", entry.description);
 		}
 	}
+
+	if (argument_missing) return 1;
+
+	const auto main_file_name_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "path...");
+	wchar_t main_file_name[64];
+	const auto bytes_written2 = MultiByteToWideChar(CP_UTF8, 0, main_file_name_arg, -1, main_file_name, ARR_COUNT(main_file_name));
+
+	main_file_name[bytes_written2] = 0;
+
+	const auto out_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "out");
+	wchar_t out_path[64];
+	const auto bytes_written3 = MultiByteToWideChar(CP_UTF8, 0, out_path_arg, -1, out_path, ARR_COUNT(out_path));
+
+	out_path[bytes_written3] = 0;
 
 	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
 	{
@@ -456,9 +486,9 @@ int main(int argc, const char** argv)
 		if (no_ext)
 			ext = wcstok(0, L".", &pt);
 
-		wcsncpy(out_file_path, L"gen/", ARR_COUNT(out_file_path));
+		wcsncpy(out_file_path, out_path, ARR_COUNT(out_file_path));
 		wcsncat(out_file_path, no_ext, ARR_COUNT(out_file_path));
-		wcsncat(out_file_path, L".", ARR_COUNT(out_file_path));
+		wcsncat(out_file_path, L".gen.", ARR_COUNT(out_file_path));
 		wcsncat(out_file_path, ext, ARR_COUNT(out_file_path));
 	}
 
