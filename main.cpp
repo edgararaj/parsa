@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <limits>
 
+typedef int64_t i64;
 typedef uint64_t u64;
 
 #define WIN32_LEAN_AND_MEAN
@@ -241,16 +242,18 @@ int main(int argc, const char** argv)
 		include.start_location = statement_start;
 		include.end_location = statement_arg_end;
 
-		const auto include_file_path_size = (int)(statement_arg_end - statement_arg_start - 1); // @TODO
-		if (!include_file_path_size) {
+		const auto include_file_path_size = statement_arg_end - statement_arg_start - 1;
+		if (!include_file_path_size || include_file_path_size > std::numeric_limits<int>::max()) {
 			printf("Invalid file path for statement: #include\n");
 			haystack = statement_arg_end;
 			continue;
 		}
 
+		const auto include_file_path_size_trunc = (int)include_file_path_size;
+
 		wchar_t include_file_path[64];
 		{
-			const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, include_file_path_size, include_file_path, ARR_COUNT(include_file_path));
+			const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, include_file_path_size_trunc, include_file_path, ARR_COUNT(include_file_path));
 			include_file_path[bytes_written] = 0;
 		}
 
