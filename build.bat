@@ -10,6 +10,7 @@ set "RootDir=%~dp0"
 set SrcDir=%RootDir%src\
 if "%1" == "debug" (
 	set BuildDir=%RootDir%build_debug\
+	echo Building debug version...
 ) else (
 	set BuildDir=%RootDir%build_release\
 )

@@ -204,10 +204,13 @@ int main(int argc, const char** argv)
 		auto search_handle = FindFirstFileW(in_path, &ffd);
 		if (INVALID_HANDLE_VALUE == search_handle) return 1;
 		do {
-			if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_NORMAL))
+			if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 				continue;
 
 			const auto in_file_path = ffd.cFileName;
+
+			wprintf(L"Processing file \"%ls\"...\n", in_file_path);
+
 			wchar_t out_file_path[64];
 			if (!get_out_file_path(out_file_path, ARR_COUNT(out_file_path), out_path, in_file_path, out_path_is_dir))
 				continue;

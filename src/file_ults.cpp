@@ -12,7 +12,7 @@ struct FileView {
 
 HANDLE create_wo_file(const wchar_t* file_path)
 {
-	const auto file_handle = CreateFileW(file_path, GENERIC_WRITE, 0, 0, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, 0);
+	const auto file_handle = CreateFileW(file_path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
