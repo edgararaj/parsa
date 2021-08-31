@@ -119,6 +119,56 @@ const FileView create_ro_file_view(const wchar_t* file_path)
 
 u64 read_file_view_to_unix_buffer(char* out_buffer, const FileView file_view, const wchar_t* file_path)
 {
+	if (!strstr(file_view.buffer.content, "\r\n"))
+	{
+#ifdef PARSA_DEBUG
+		wprintf(L"File \"%ls\" is unix\n", file_path);
+#endif
+		size_t size;
+		if (strcmp(&file_view.buffer.content[file_view.buffer.size-1], "\n") == 0)
+			size = file_view.buffer.size - 1;
+		else
+			size = file_view.buffer.size;
+
+		memcpy(out_buffer, file_view.buffer.content, size);
+		return size;
+	}
+
+#ifdef PARSA_DEBUG
+	wprintf(L"File \"%ls\" is dos\n", file_path);
+#endif
+
+	u64 result = file_view.buffer.size;
+
+	auto out_buffer_end = out_buffer;
+	auto haystack = file_view.buffer.content;
+	const char* last_dos_le = 0;
+	while (true)
+	{
+		const auto dos_le = strstr(haystack, "\r\n");
+		if (!dos_le) {
+			const auto eof = file_view.buffer.content + file_view.buffer.size;
+			if (last_dos_le != eof - 2)
+			{
+				// File doesn't have eol
+				memcpy(out_buffer_end, haystack, eof - haystack);
+				break;
+			}
+			result--;
+			break;
+		}
+
+		const auto size = dos_le - haystack;
+		memcpy(out_buffer_end, haystack, size);
+		out_buffer_end += size;
+		haystack = dos_le + 1;
+		result--;
+		last_dos_le = dos_le;
+	}
+
+	return result;
+
+#if 0
 	if (strcmp(&file_view.buffer.content[file_view.buffer.size-2], "\r\n") != 0)
 	{
 #ifdef PARSA_DEBUG
@@ -157,6 +207,7 @@ u64 read_file_view_to_unix_buffer(char* out_buffer, const FileView file_view, co
 	}
 
 	return result - 1;
+#endif
 }
 
 const FileBuffer read_file_to_unix_buffer(const wchar_t* file_path)
