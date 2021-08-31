@@ -9,9 +9,9 @@ for /F "tokens=1,2 delims=#" %%a in ('"prompt #$H#$E# & echo on & for %%b in (1)
 set "RootDir=%~dp0"
 set SrcDir=%RootDir%src\
 if "%1" == "debug" (
-	set BuildDir=%RootDir%build\debug\
+	set BuildDir=%RootDir%build_debug\
 ) else (
-	set BuildDir=%RootDir%build\release\
+	set BuildDir=%RootDir%build_release\
 )
 
 set CommonCompilerFlags=-nologo -GR- -Gm- -EHa- -Oi -WX -W4 -wd4100 -wd4201 -wd4189 -wd4701 -std:c++latest
@@ -20,6 +20,7 @@ if "%1" == "debug" (
 ) else (
 	set CommonCompilerFlags=%CommonCompilerFlags% -O2
 )
+
 set CommonLinkerFlags=-opt:ref -incremental:no -subsystem:console -nodefaultlib kernel32.lib libucrt.lib libvcruntime.lib libcmt.lib
 
 if exist %BuildDir% (

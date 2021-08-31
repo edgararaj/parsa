@@ -67,16 +67,23 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 	auto haystack = in_file_buffer.content;
 	while (true)
 	{
-		const auto statement_start = strstr(haystack, "#include");
+		const auto include_statement = "#include ";
+		const auto statement_start = strstr(haystack, include_statement);
 		if (!statement_start) break;
-		const auto statement_arg_start = strchr(statement_start, '\"');
-		if (!statement_arg_start) {
+
+		const auto statement_end = statement_start + ARR_COUNT(include_statement) - 1;
+
+		auto statement_arg_start = statement_end + 1;
+		for (; *statement_arg_start == ' '; statement_arg_start++);
+		if (*statement_arg_start != '"')
+		{
 			printf("Couldn't find opening \" for statement: #include\n");
 			break;
 		}
 
-		const auto statement_arg_end = strchr(statement_arg_start+1, '\"');
-		if (!statement_arg_end)
+		auto statement_arg_end = statement_arg_start + 1;
+		for (; *statement_arg_end != '"' && *statement_arg_end != '\n' && *statement_arg_end; statement_arg_end++);
+		if (*statement_arg_end != '"')
 		{
 			printf("Couldn't find closing \" for statement: #include\n");
 			break;
