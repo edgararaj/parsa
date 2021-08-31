@@ -20,6 +20,8 @@ HANDLE create_wo_file(const wchar_t* file_path)
 		const auto error = GetLastError();
 		if (ERROR_FILE_EXISTS == error)
 			printf(": File already exists");
+		else if (ERROR_PATH_NOT_FOUND == error)
+			printf(": Path doesn't exist");
 
 		printf("!\n");
 
@@ -66,7 +68,7 @@ HANDLE open_ro_file(const wchar_t* file_path)
 		const auto error = GetLastError();
 		if (ERROR_FILE_NOT_FOUND == error)
 			printf(": File doesn't exist");
-		else
+		else if (ERROR_FILE_CHECKED_OUT == error)
 			printf(": File is being used by other program");
 
 		printf("!\n");

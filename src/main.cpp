@@ -25,18 +25,25 @@ struct IncludeStatement {
 	FileBuffer file_buffer;
 };
 
+const wchar_t* get_last_slash(const wchar_t* path)
+{
+	const wchar_t* last_slash = 0;
+	for (auto c = path; *c; c++)
+	{
+		if (*c == L'\\' || *c == L'/')
+			last_slash = c;
+	}
+
+	return last_slash;
+}
+
 bool get_out_file_path(wchar_t* out_file_path, const size_t out_file_path_count, const wchar_t* out_path, const wchar_t* in_path, bool out_path_is_dir)
 {
 	wcsncpy(out_file_path, out_path, out_file_path_count);
 
 	if (out_path_is_dir)
 	{
-		const wchar_t* last_slash = 0;
-		for (const wchar_t* c = in_path; *c; c++)
-		{
-			if (*c == L'\\' || *c == L'/')
-				last_slash = c;
-		}
+		const auto last_slash = get_last_slash(in_path);
 
 		const wchar_t* src;
 		if (last_slash)
@@ -77,7 +84,7 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 		for (; *statement_arg_start == ' '; statement_arg_start++);
 		if (*statement_arg_start != '"')
 		{
-			printf("Couldn't find opening \" for statement: #include\n");
+			printf("Can't find opening \" for statement: #include\n");
 			break;
 		}
 
@@ -85,7 +92,7 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 		for (; *statement_arg_end != '"' && *statement_arg_end != '\n' && *statement_arg_end; statement_arg_end++);
 		if (*statement_arg_end != '"')
 		{
-			printf("Couldn't find closing \" for statement: #include\n");
+			printf("Can't find closing \" for statement: #include\n");
 			break;
 		}
 
@@ -154,23 +161,29 @@ int main(int argc, const char** argv)
 #endif
 
 	wchar_t in_path[64];
+	const wchar_t* in_path_last_slash = 0;
 	bool in_path_is_dir = 0;
 	{
-		const auto main_file_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "path");
+		const auto in_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "path");
 
-		{
-			auto c = main_file_path_arg;
-			for (; *c != 0; c++) {}
-			if (*(c-1) == '/' || *(c-1) == '\\' || *(c-1) == '*' || *(c-1) == '.')
-				in_path_is_dir = 1;
-		}
-
-		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, main_file_path_arg, -1, in_path, ARR_COUNT(in_path));
+		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, in_path_arg, -1, in_path, ARR_COUNT(in_path));
 		if (!bytes_written) {
 			printf("File path is too large!\n");
 			return 1;
 		}
 		in_path[bytes_written] = 0;
+
+		{
+			auto c = in_path;
+			for (; *c && *c != L'*' && *c != L'.'; c++) {}
+			if ((!*c && *(c-1) == L'/') || (!*c && *(c-1) == L'\\') || *c == L'*' ||
+					((*(c-2) == L'/' || *(c-2) == L'\\') && *(c-1) == L'.'))
+			{
+				if ((!*c && *(c-1) == L'/') || (!*c && *(c-1) == L'\\'))
+					in_path_last_slash = c-1;
+				in_path_is_dir = 1;
+			}
+		}
 	}
 
 	wchar_t out_path[64];
@@ -181,7 +194,8 @@ int main(int argc, const char** argv)
 		{
 			auto c = out_path_arg;
 			for (; *c != 0; c++) {}
-			if (*(c-1) == '/' || *(c-1) == '\\' || *(c-1) == '.')
+			if (*(c-1) == '/' || *(c-1) == '\\' ||
+					((*(c-2) == '/' || *(c-2) == '\\') && *(c-1) == '.'))
 				out_path_is_dir = 1;
 		}
 
@@ -199,6 +213,21 @@ int main(int argc, const char** argv)
 		return 1;
 	}
 
+	wchar_t in_path_dir[64];
+	if (!in_path_last_slash) in_path_last_slash = get_last_slash(in_path);
+
+	if (in_path_last_slash)
+	{
+		const auto size = in_path_last_slash - in_path + 1;
+		if (size >= ARR_COUNT(in_path_dir))
+		{
+			printf("File path is too large!\n");
+			return 1;
+		}
+		wcsncpy(in_path_dir, in_path, size);
+		in_path_dir[size] = 0;
+	}
+
 	{
 		WIN32_FIND_DATAW ffd;
 		auto search_handle = FindFirstFileW(in_path, &ffd);
@@ -207,13 +236,34 @@ int main(int argc, const char** argv)
 			if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 				continue;
 
-			const auto in_file_path = ffd.cFileName;
+			const auto in_file_name = ffd.cFileName;
+			wchar_t in_file_path[64];
+			if (in_path_last_slash)
+			{
+				wcscpy(in_file_path, in_path_dir);
+				if (FAILED(StringCchCatW(in_file_path, ARR_COUNT(in_file_path), in_file_name)))
+				{
+					printf("File path is too large!\n");
+					continue;
+				}
+			}
+			else
+			{
+				wcscpy(in_file_path, in_file_name);
+			}
 
 			wprintf(L"Processing file \"%ls\"...\n", in_file_path);
 
 			wchar_t out_file_path[64];
-			if (!get_out_file_path(out_file_path, ARR_COUNT(out_file_path), out_path, in_file_path, out_path_is_dir))
-				continue;
+			wcsncpy(out_file_path, out_path, ARR_COUNT(out_file_path));
+			if (out_path_is_dir)
+			{
+				if (FAILED(StringCchCatW(out_file_path, ARR_COUNT(out_file_path), in_file_name)))
+				{
+					printf("File path is too large!\n");
+					continue;
+				}
+			}
 
 			const auto in_file_buffer = read_file_to_unix_buffer(in_file_path);
 			if (!in_file_buffer.content)
