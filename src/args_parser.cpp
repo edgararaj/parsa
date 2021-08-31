@@ -146,7 +146,7 @@ bool parse_args(ArgEntry* arg_entries, const int arg_entries_count, const int ar
 		{
 			if (!entry_matched)
 			{
-				printf("No option %s found!\n", argv[i]);
+				printf("No option \"%s\" found!\n", argv[i]);
 				print_usage(arg_entries, arg_entries_count);
 				return 0;
 			}

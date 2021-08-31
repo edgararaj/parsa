@@ -18,4 +18,4 @@ REM )
 
 REM if not exist %GenDir% mkdir %GenDir%
 
-build\parsa.exe %*
+build\debug\parsa.exe %*

@@ -7,10 +7,19 @@ for /F "tokens=1,2 delims=#" %%a in ('"prompt #$H#$E# & echo on & for %%b in (1)
 )
 
 set "RootDir=%~dp0"
-set SrcDir=%RootDir%src
-set BuildDir=%RootDir%build
+set SrcDir=%RootDir%src\
+if "%1" == "debug" (
+	set BuildDir=%RootDir%build\debug\
+) else (
+	set BuildDir=%RootDir%build\release\
+)
 
-set CommonCompilerFlags=-nologo -Od -GR- -Gm- -EHa- -Zi -Oi -WX -W4 -wd4100 -wd4201 -wd4189 -wd4701 -std:c++latest -DPARSA_DEBUG
+set CommonCompilerFlags=-nologo -GR- -Gm- -EHa- -Oi -WX -W4 -wd4100 -wd4201 -wd4189 -wd4701 -std:c++latest
+if "%1" == "debug" (
+	set CommonCompilerFlags=%CommonCompilerFlags% -Od -Zi -DPARSA_DEBUG
+) else (
+	set CommonCompilerFlags=%CommonCompilerFlags% -O2
+)
 set CommonLinkerFlags=-opt:ref -incremental:no -subsystem:console -nodefaultlib kernel32.lib libucrt.lib libvcruntime.lib libcmt.lib
 
 if exist %BuildDir% (
@@ -25,7 +34,7 @@ if not exist %BuildDir% (
 	mkdir %BuildDir%
 	pushd %BuildDir%
 
-	cl %CommonCompilerFlags% "%RootDir%\%1" -Fmparsa -Feparsa -link %CommonLinkerFlags% advapi32.lib
+	cl %CommonCompilerFlags% %SrcDir%main.cpp -Fmparsa -Feparsa -link %CommonLinkerFlags% advapi32.lib
 	call :CheckCompile
 
 	popd
@@ -37,5 +46,5 @@ exit /b
 if %errorlevel% neq 0 (
 	echo %ESC%[91mFailed to compile! ;(%ESC%[0m
 ) else (
-	echo %ESC%[92mCompiled sucessfully!%ESC%[0m
+	echo %ESC%[92mCompiled sucessfully%ESC%[0m
 )

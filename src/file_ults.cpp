@@ -16,10 +16,12 @@ HANDLE create_wo_file(const wchar_t* file_path)
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
-		wprintf(L"Failed to create file (%ls)\n", file_path);
+		wprintf(L"Failed to create file \"%ls\"", file_path);
 		const auto error = GetLastError();
 		if (ERROR_FILE_EXISTS == error)
-			wprintf(L"Reason: File already exists\n");
+			printf(": File already exists");
+
+		printf("!\n");
 
 		return 0;
 	}
@@ -39,12 +41,12 @@ bool write_file(const HANDLE file_handle, const wchar_t* file_path, const void* 
 		const auto ret = WriteFile(file_handle, buffer, to_write, &bytes_written, 0);
 		if (!ret)
 		{
-			wprintf(L"Failed to write to file (%ls)\n", file_path);
+			wprintf(L"Failed to write to file \"%ls\"!\n", file_path);
 			break;
 		}
 		if (!bytes_written)
 		{
-			wprintf(L"Successfuly wrote to file (%ls)\n", file_path);
+			wprintf(L"Successfuly wrote to file \"%ls\"\n", file_path);
 			return 1;
 		}
 
@@ -60,12 +62,14 @@ HANDLE open_ro_file(const wchar_t* file_path)
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
-		wprintf(L"Failed to open file (%ls)\n", file_path);
+		wprintf(L"Failed to open file \"%ls\"", file_path);
 		const auto error = GetLastError();
 		if (ERROR_FILE_NOT_FOUND == error)
-			wprintf(L"Reason: File doesn't exist\n");
+			printf(": File doesn't exist");
 		else
-			wprintf(L"Reason: File is being used by other program\n");
+			printf(": File is being used by other program");
+
+		printf("!\n");
 
 		return 0;
 	}
@@ -93,20 +97,20 @@ const FileView create_ro_file_view(const wchar_t* file_path)
 	const auto file_map = CreateFileMappingW(file_handle, 0, PAGE_READONLY, 0, 0, 0);
 	if (!file_map)
 	{
-		printf("Failed to create file mapping\n");
+		wprintf(L"Failed to create file mapping of file \"%ls\"!\n", file_path);
 		return result;
 	}
 
 	const auto file_view = (char*)MapViewOfFile(file_map, FILE_MAP_READ, 0, 0, 0);
 	if (!file_view)
 	{
-		printf("Failed to create file view\n");
+		wprintf(L"Failed to create file view of file \"%ls\"!\n", file_path);
 		return result;
 	}
 
 	const auto file_view_size = get_file_size(file_handle);
 	if (!file_view_size) {
-		wprintf(L"Couldn't get file size of file (%ls)\n", file_path);
+		wprintf(L"Failed to get file size of file \"%ls\"!\n", file_path);
 		return result;
 	}
 
@@ -117,18 +121,22 @@ u64 read_file_view_to_unix_buffer(char* out_buffer, const FileView file_view, co
 {
 	if (strcmp(&file_view.buffer.content[file_view.buffer.size-2], "\r\n") != 0)
 	{
-		wprintf(L"File (%ls) is unix\n", file_path);
+#ifdef PARSA_DEBUG
+		wprintf(L"File \"%ls\" is unix\n", file_path);
+#endif
 		const auto size = file_view.buffer.size - 1;
 		memcpy(out_buffer, file_view.buffer.content, size);
 		return size;
 	}
 	else if (strcmp(&file_view.buffer.content[file_view.buffer.size-1], "\n") != 0)
 	{
-		wprintf(L"File (%ls) may be corrupted\n", file_path);
+		wprintf(L"File \"%ls\" may be corrupted\n", file_path);
 		return 0;
 	}
 
-	wprintf(L"File (%ls) is dos\n", file_path);
+#ifdef PARSA_DEBUG
+	wprintf(L"File \"%ls\" is dos\n", file_path);
+#endif
 
 	u64 result = file_view.buffer.size;
 
@@ -160,7 +168,7 @@ const FileBuffer read_file_to_unix_buffer(const wchar_t* file_path)
 	const auto file_buffer = (char*)VirtualAlloc(0, file_view.buffer.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!file_buffer)
 	{
-		printf("Failed to allocate memory\n");
+		printf("Failed to allocate memory!\n");
 		return {};
 	}
 
