@@ -2,10 +2,10 @@
 
 struct ArgEntry
 {
-	const char* const short_name;
-	const char* const long_name;
+	const wchar_t* const short_name;
+	const wchar_t* const long_name;
 	const char* const description;
-	const char* value;
+	const wchar_t* value;
 	int num_values;
 	bool already_filled;
 };
@@ -17,22 +17,22 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 	for (int i = 0; i < entries_count; i++)
 	{
 		const auto& entry = entries[i];
-		if (strcmp(entry.long_name, "help") == 0) continue;
+		if (wcscmp(entry.long_name, L"help") == 0) continue;
 
 		if (entry.short_name) // Is option
 		{
 			if (entry.short_name)
-				printf(" [-%s", entry.short_name);
+				wprintf(L" [-%ls", entry.short_name);
 			else
-				printf(" [--%s", entry.long_name);
+				wprintf(L" [--%ls", entry.long_name);
 
-			if (entry.num_values) printf(" %s", entry.long_name);
+			if (entry.num_values) wprintf(L" %ls", entry.long_name);
 
 			printf("]");
 		}
 		else // Is argument
 		{
-			printf(" <%s", entry.long_name);
+			wprintf(L" <%ls", entry.long_name);
 			if (entry.num_values) printf("...");
 			printf(">");
 		}
@@ -45,13 +45,13 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 		const auto& entry = entries[i];
 		if (!entry.short_name) continue;
 
-		printf("\t\x1b[1m-%s\x1b[0m", entry.short_name);
-		if (entry.num_values) printf(" %s", entry.long_name);
+		wprintf(L"\t\x1b[1m-%ls\x1b[0m", entry.short_name);
+		if (entry.num_values) wprintf(L" %ls", entry.long_name);
 
 		if (entry.long_name)
 		{
-			printf(", \x1b[1m--%s\x1b[0m", entry.long_name);
-			if (entry.num_values) printf(" %s", entry.long_name);
+			wprintf(L", \x1b[1m--%ls\x1b[0m", entry.long_name);
+			if (entry.num_values) wprintf(L" %ls", entry.long_name);
 		}
 
 		if (entry.description)
@@ -73,7 +73,7 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 
 		printf("\t");
 
-		printf("\x1b[1m%s", entry.long_name);
+		wprintf(L"\x1b[1m%ls", entry.long_name);
 		if (entry.num_values) printf("...");
 		printf("\x1b[0m");
 		if (entry.description)
@@ -86,12 +86,12 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 	}
 }
 
-const char* get_arg_entry_value(const ArgEntry* entries, const int entries_count, const char* entry_name) {
+const wchar_t* get_arg_entry_value(const ArgEntry* entries, const int entries_count, const wchar_t* entry_name) {
 	for (int i = 0; i < entries_count; i++)
 	{
 		auto& entry = entries[i];
-		if (entry.short_name && strcmp(entry.short_name, entry_name) == 0 ||
-			entry.long_name && strcmp(entry.long_name, entry_name) == 0)
+		if (entry.short_name && wcscmp(entry.short_name, entry_name) == 0 ||
+			entry.long_name && wcscmp(entry.long_name, entry_name) == 0)
 		{
 			return entry.value;
 		}
@@ -100,12 +100,12 @@ const char* get_arg_entry_value(const ArgEntry* entries, const int entries_count
 	return 0;
 }
 
-bool parse_args(ArgEntry* arg_entries, const int arg_entries_count, const int argc, const char** argv)
+bool parse_args(ArgEntry* arg_entries, const int arg_entries_count, const int argc, const wchar_t** argv)
 {
 	ArgEntry* entry_matched = 0;
 	for (int i = 1; i < argc; i++)
 	{
-		const auto arg_is_option = *argv[i] == '-';
+		const auto arg_is_option = *argv[i] == L'-';
 
 		if (!arg_is_option && entry_matched)
 		{
@@ -123,8 +123,8 @@ bool parse_args(ArgEntry* arg_entries, const int arg_entries_count, const int ar
 				if (entry.short_name)
 				{
 					auto next_char = argv[i]+1;
-					if (*next_char && strcmp(next_char, entry.short_name) == 0 ||
-							*(next_char++) == '-' && *next_char && entry.long_name && strcmp(next_char, entry.long_name) == 0)
+					if (*next_char && wcscmp(next_char, entry.short_name) == 0 ||
+							*(next_char++) == L'-' && *next_char && entry.long_name && wcscmp(next_char, entry.long_name) == 0)
 					{
 						entry_matched = &entry;
 						break;
@@ -146,7 +146,7 @@ bool parse_args(ArgEntry* arg_entries, const int arg_entries_count, const int ar
 		{
 			if (!entry_matched)
 			{
-				printf("No option \"%s\" found!\n", argv[i]);
+				wprintf(L"No option \"%ls\" found!\n", argv[i]);
 				print_usage(arg_entries, arg_entries_count);
 				return 0;
 			}
@@ -154,13 +154,13 @@ bool parse_args(ArgEntry* arg_entries, const int arg_entries_count, const int ar
 			{
 				if (!entry_matched->num_values)
 				{
-					if (entry_matched->short_name && strcmp(entry_matched->short_name, "h") == 0)
+					if (entry_matched->short_name && wcscmp(entry_matched->short_name, L"h") == 0)
 					{
 						print_usage(arg_entries, arg_entries_count);
 						return 0;
 					}
 
-					entry_matched->value = "";
+					entry_matched->value = L"";
 					entry_matched->already_filled = 1;
 					entry_matched = 0;
 				}

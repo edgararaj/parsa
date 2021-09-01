@@ -110,7 +110,7 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 }
 
 
-int main(int argc, const char** argv)
+int wmain(int argc, const wchar_t** argv)
 {
 	// Enable conhost ascii escape sequences
 	const auto handle = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -119,9 +119,9 @@ int main(int argc, const char** argv)
 	SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
 	ArgEntry arg_entries[] = {
-		{"h", "help", "Display this message", 0},
-		{"o", "out", "Output directory/file", "gen/", 1},
-		{0, "path", "Directory or file(s) to preprocess", "*.js", -1},
+		{L"h", L"help", "Display this message", 0},
+		{L"o", L"out", "Output directory/file", L"gen/", 1},
+		{0, L"path", "Directory or file(s) to preprocess", L"*.js", -1},
 	};
 
 	if (!parse_args(arg_entries, ARR_COUNT(arg_entries), argc, argv))
@@ -131,56 +131,34 @@ int main(int argc, const char** argv)
 	printf("--------ARGS--------\n");
 	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
 	{
-		printf("--%s: %s\n", arg_entries[i].long_name, arg_entries[i].value);
+		wprintf(L"--%ls: %ls\n", arg_entries[i].long_name, arg_entries[i].value);
 	}
 	printf("--------------------\n\n");
 #endif
 
-	wchar_t in_path[64];
+	const auto in_path = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"path");
 	const wchar_t* in_path_last_slash = 0;
 	bool in_path_is_dir = 0;
 	{
-		const auto in_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "path");
-
-		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, in_path_arg, -1, in_path, ARR_COUNT(in_path));
-		if (!bytes_written) {
-			printf("File path is too large!\n");
-			return 1;
-		}
-		in_path[bytes_written] = 0;
-
+		auto c = in_path;
+		for (; *c && *c != L'*' && *c != L'.'; c++) {}
+		if ((!*c && *(c-1) == L'/') || (!*c && *(c-1) == L'\\') || *c == L'*' ||
+				((*(c-2) == L'/' || *(c-2) == L'\\') && *(c-1) == L'.'))
 		{
-			auto c = in_path;
-			for (; *c && *c != L'*' && *c != L'.'; c++) {}
-			if ((!*c && *(c-1) == L'/') || (!*c && *(c-1) == L'\\') || *c == L'*' ||
-					((*(c-2) == L'/' || *(c-2) == L'\\') && *(c-1) == L'.'))
-			{
-				if ((!*c && *(c-1) == L'/') || (!*c && *(c-1) == L'\\'))
-					in_path_last_slash = c-1;
-				in_path_is_dir = 1;
-			}
+			if ((!*c && *(c-1) == L'/') || (!*c && *(c-1) == L'\\'))
+				in_path_last_slash = c-1;
+			in_path_is_dir = 1;
 		}
 	}
 
-	wchar_t out_path[64];
+	const auto out_path = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"out");
 	bool out_path_is_dir = 0;
 	{
-		const auto out_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), "out");
-
-		{
-			auto c = out_path_arg;
-			for (; *c != 0; c++) {}
-			if (*(c-1) == '/' || *(c-1) == '\\' ||
-					((*(c-2) == '/' || *(c-2) == '\\') && *(c-1) == '.'))
-				out_path_is_dir = 1;
-		}
-
-		const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, out_path_arg, -1, out_path, ARR_COUNT(out_path));
-		if (!bytes_written) {
-			printf("File path is too large!\n");
-			return 1;
-		}
-		out_path[bytes_written] = 0;
+		auto c = out_path;
+		for (; *c; c++) {}
+		if (*(c-1) == L'/' || *(c-1) == L'\\' ||
+				((*(c-2) == L'/' || *(c-2) == L'\\') && *(c-1) == L'.'))
+			out_path_is_dir = 1;
 	}
 
 	if (in_path_is_dir && !out_path_is_dir)
