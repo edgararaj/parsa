@@ -14,8 +14,8 @@ typedef uint64_t u64;
 
 #define ARR_COUNT(x) (sizeof(x)/sizeof(x[0]))
 
-#include <strsafe.h>
-
+#include "wcslcpy.cpp"
+#include "wcslcat.cpp"
 #include "args_parser.cpp"
 #include "file_ults.cpp"
 
@@ -35,30 +35,6 @@ const wchar_t* get_last_slash(const wchar_t* path)
 	}
 
 	return last_slash;
-}
-
-bool get_out_file_path(wchar_t* out_file_path, const size_t out_file_path_count, const wchar_t* out_path, const wchar_t* in_path, bool out_path_is_dir)
-{
-	wcsncpy(out_file_path, out_path, out_file_path_count);
-
-	if (out_path_is_dir)
-	{
-		const auto last_slash = get_last_slash(in_path);
-
-		const wchar_t* src;
-		if (last_slash)
-			src = last_slash+1;
-		else
-			src = in_path;
-
-		if (FAILED(StringCchCatW(out_file_path, out_file_path_count, src)))
-		{
-			printf("File path is too large!\n");
-			return 0;
-		}
-	}
-
-	return 1;
 }
 
 struct ProcessResult {
@@ -224,8 +200,7 @@ int main(int argc, const char** argv)
 			printf("File path is too large!\n");
 			return 1;
 		}
-		wcsncpy(in_path_dir, in_path, size);
-		in_path_dir[size] = 0;
+		wcslcpy(in_path_dir, in_path, size+1);
 	}
 
 	{
@@ -240,8 +215,12 @@ int main(int argc, const char** argv)
 			wchar_t in_file_path[64];
 			if (in_path_last_slash)
 			{
-				wcscpy(in_file_path, in_path_dir);
-				if (FAILED(StringCchCatW(in_file_path, ARR_COUNT(in_file_path), in_file_name)))
+				if (wcslcpy(in_file_path, in_path_dir, ARR_COUNT(in_file_path)) >= ARR_COUNT(in_file_path))
+				{
+					printf("File path is too large!\n");
+					continue;
+				}
+				if (wcslcat(in_file_path, in_file_name, ARR_COUNT(in_file_path)) >= ARR_COUNT(in_file_path))
 				{
 					printf("File path is too large!\n");
 					continue;
@@ -249,16 +228,24 @@ int main(int argc, const char** argv)
 			}
 			else
 			{
-				wcscpy(in_file_path, in_file_name);
+				if (wcslcpy(in_file_path, in_file_name, ARR_COUNT(in_file_path)) >= ARR_COUNT(in_file_path))
+				{
+					printf("File path is too large!\n");
+					continue;
+				}
 			}
 
 			wprintf(L"Processing file \"%ls\"...\n", in_file_path);
 
 			wchar_t out_file_path[64];
-			wcsncpy(out_file_path, out_path, ARR_COUNT(out_file_path));
+			if (wcslcpy(out_file_path, out_path, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
+			{
+				printf("File path is too large!\n");
+				continue;
+			}
 			if (out_path_is_dir)
 			{
-				if (FAILED(StringCchCatW(out_file_path, ARR_COUNT(out_file_path), in_file_name)))
+				if (wcslcat(out_file_path, in_file_name, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
 				{
 					printf("File path is too large!\n");
 					continue;
