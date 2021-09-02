@@ -17,6 +17,8 @@ typedef uint64_t u64;
 
 #define ARR_COUNT(x) (sizeof(x)/sizeof(x[0]))
 
+HANDLE g_conout;
+
 #include "nice_wprintf.cpp"
 #include "wcslcpy.cpp"
 #include "wcslcat.cpp"
@@ -116,10 +118,11 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 int wmain(int argc, const wchar_t** argv)
 {
 	// Enable conhost ascii escape sequences
-	const auto handle = GetStdHandle(STD_OUTPUT_HANDLE);
+	g_conout = GetStdHandle(STD_OUTPUT_HANDLE);
+	if (!g_conout || g_conout == INVALID_HANDLE_VALUE) return 0;
 	DWORD mode;
-	GetConsoleMode(handle, &mode);
-	SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+	GetConsoleMode(g_conout, &mode);
+	SetConsoleMode(g_conout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
 	ArgEntry arg_entries[] = {
 		{L"h", L"help", "Display this message", 0},
@@ -131,20 +134,22 @@ int wmain(int argc, const wchar_t** argv)
 		return 1;
 
 #ifdef PARSA_DEBUG
-	nice_wprintf(L"--------ARGS--------\n");
+	printf("--------ARGS--------\n");
 	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
 	{
-		nice_wprintf(L"--%ls: %ls\n", arg_entries[i].long_name, arg_entries[i].value);
+		nice_wprintf(g_conout, L"--%ls: %ls\n", arg_entries[i].long_name, arg_entries[i].value);
 	}
-	nice_wprintf(L"--------------------\n\n");
+	printf("--------------------\n\n");
 #endif
 
 	const auto in_path = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"path");
+	wchar_t in_full_path[64];
+	const auto in_full_path_written = GetFullPathNameW(in_path, ARR_COUNT(in_full_path), in_full_path, 0);
 	const wchar_t* in_path_last_slash = 0;
 	bool in_path_is_dir = 0;
 	{
 		auto c = in_path;
-		for (; *c && *c != L'*' && *c != L'.'; c++) {}
+		for (; *c && *c != L'*'; c++) {}
 		if ((!*c && *(c-1) == L'/') || (!*c && *(c-1) == L'\\') || *c == L'*' ||
 				((*(c-2) == L'/' || *(c-2) == L'\\') && *(c-1) == L'.'))
 		{
@@ -166,7 +171,7 @@ int wmain(int argc, const wchar_t** argv)
 
 	if (in_path_is_dir && !out_path_is_dir)
 	{
-		printf("Please specify a directory to output\n");
+		printf("Please specify a directory to output to!\n");
 		return 1;
 	}
 
@@ -216,7 +221,7 @@ int wmain(int argc, const wchar_t** argv)
 				}
 			}
 
-			wprintf(L"Processing file \"%ls\"...\n", in_file_path);
+			nice_wprintf(g_conout, L"Processing file \"%ls\"...\n", in_file_path);
 
 			wchar_t out_file_path[64];
 			if (wcslcpy(out_file_path, out_path, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
@@ -288,3 +293,4 @@ int wmain(int argc, const wchar_t** argv)
 
 	return 0;
 }
+

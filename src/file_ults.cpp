@@ -1,5 +1,3 @@
-#pragma once
-
 struct FileBuffer {
 	char* content;
 	u64 size;
@@ -16,7 +14,7 @@ HANDLE create_wo_file(const wchar_t* file_path)
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
-		wprintf(L"Failed to create file \"%ls\"", file_path);
+		nice_wprintf(g_conout, L"Failed to create file \"%ls\"", file_path);
 		const auto error = GetLastError();
 		if (ERROR_FILE_EXISTS == error)
 			printf(": File already exists");
@@ -43,12 +41,12 @@ bool write_file(const HANDLE file_handle, const wchar_t* file_path, const void* 
 		const auto ret = WriteFile(file_handle, buffer, to_write, &bytes_written, 0);
 		if (!ret)
 		{
-			wprintf(L"Failed to write to file \"%ls\"!\n", file_path);
+			nice_wprintf(g_conout, L"Failed to write to file \"%ls\"!\n", file_path);
 			break;
 		}
 		if (!bytes_written)
 		{
-			wprintf(L"Successfuly wrote to file \"%ls\"\n", file_path);
+			nice_wprintf(g_conout, L"Successfuly wrote to file \"%ls\"\n", file_path);
 			return 1;
 		}
 
@@ -64,7 +62,7 @@ HANDLE open_ro_file(const wchar_t* file_path)
 
 	if (INVALID_HANDLE_VALUE == file_handle)
 	{
-		wprintf(L"Failed to open file \"%ls\"", file_path);
+		nice_wprintf(g_conout, L"Failed to open file \"%ls\"", file_path);
 		const auto error = GetLastError();
 		if (ERROR_FILE_NOT_FOUND == error)
 			printf(": File doesn't exist");
@@ -99,20 +97,20 @@ const FileView create_ro_file_view(const wchar_t* file_path)
 	const auto file_map = CreateFileMappingW(file_handle, 0, PAGE_READONLY, 0, 0, 0);
 	if (!file_map)
 	{
-		wprintf(L"Failed to create file mapping of file \"%ls\"!\n", file_path);
+		nice_wprintf(g_conout, L"Failed to create file mapping of file \"%ls\"!\n", file_path);
 		return result;
 	}
 
 	const auto file_view = (char*)MapViewOfFile(file_map, FILE_MAP_READ, 0, 0, 0);
 	if (!file_view)
 	{
-		wprintf(L"Failed to create file view of file \"%ls\"!\n", file_path);
+		nice_wprintf(g_conout, L"Failed to create file view of file \"%ls\"!\n", file_path);
 		return result;
 	}
 
 	const auto file_view_size = get_file_size(file_handle);
 	if (!file_view_size) {
-		wprintf(L"Failed to get file size of file \"%ls\"!\n", file_path);
+		nice_wprintf(g_conout, L"Failed to get file size of file \"%ls\"!\n", file_path);
 		return result;
 	}
 
@@ -124,7 +122,7 @@ u64 read_file_view_to_unix_buffer(char* out_buffer, const FileView file_view, co
 	if (!strstr(file_view.buffer.content, "\r\n"))
 	{
 #ifdef PARSA_DEBUG
-		wprintf(L"File \"%ls\" is unix\n", file_path);
+		nice_wprintf(g_conout, L"File \"%ls\" is unix\n", file_path);
 #endif
 		size_t size;
 		if (strcmp(&file_view.buffer.content[file_view.buffer.size-1], "\n") == 0)
@@ -137,7 +135,7 @@ u64 read_file_view_to_unix_buffer(char* out_buffer, const FileView file_view, co
 	}
 
 #ifdef PARSA_DEBUG
-	wprintf(L"File \"%ls\" is dos\n", file_path);
+	nice_wprintf(g_conout, L"File \"%ls\" is dos\n", file_path);
 #endif
 
 	u64 result = file_view.buffer.size;
@@ -174,7 +172,7 @@ u64 read_file_view_to_unix_buffer(char* out_buffer, const FileView file_view, co
 	if (strcmp(&file_view.buffer.content[file_view.buffer.size-2], "\r\n") != 0)
 	{
 #ifdef PARSA_DEBUG
-		wprintf(L"File \"%ls\" is unix\n", file_path);
+		nice_wprintf(g_conout, L"File \"%ls\" is unix\n", file_path);
 #endif
 		const auto size = file_view.buffer.size - 1;
 		memcpy(out_buffer, file_view.buffer.content, size);
@@ -182,12 +180,12 @@ u64 read_file_view_to_unix_buffer(char* out_buffer, const FileView file_view, co
 	}
 	else if (strcmp(&file_view.buffer.content[file_view.buffer.size-1], "\n") != 0)
 	{
-		wprintf(L"File \"%ls\" may be corrupted\n", file_path);
+		nice_wprintf(g_conout, L"File \"%ls\" may be corrupted\n", file_path);
 		return 0;
 	}
 
 #ifdef PARSA_DEBUG
-	wprintf(L"File \"%ls\" is dos\n", file_path);
+	nice_wprintf(g_conout, L"File \"%ls\" is dos\n", file_path);
 #endif
 
 	u64 result = file_view.buffer.size;

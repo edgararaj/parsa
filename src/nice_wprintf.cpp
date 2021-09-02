@@ -1,8 +1,5 @@
-int nice_wprintf(const wchar_t* fmt, ...)
+int nice_wprintf(const HANDLE handle, const wchar_t* fmt, ...)
 {
-	const auto handle = GetStdHandle(STD_OUTPUT_HANDLE);
-	if (!handle || handle == INVALID_HANDLE_VALUE) return 0;
-
 	wchar_t buffer[256];
 	va_list args;
 	va_start(args, fmt);
@@ -17,8 +14,6 @@ int nice_wprintf(const wchar_t* fmt, ...)
 	DWORD chars_written;
 	if (!WriteConsoleW(handle, buffer, (DWORD)chars_to_write, &chars_written, 0))
 		return 0;
-	CloseHandle(handle);
 
 	return chars_written;
 }
-

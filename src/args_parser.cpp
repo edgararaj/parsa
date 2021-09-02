@@ -1,5 +1,3 @@
-#pragma once
-
 struct ArgEntry
 {
 	const wchar_t* const short_name;
@@ -22,17 +20,17 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 		if (entry.short_name) // Is option
 		{
 			if (entry.short_name)
-				wprintf(L" [-%ls", entry.short_name);
+				nice_wprintf(g_conout, L" [-%ls", entry.short_name);
 			else
-				wprintf(L" [--%ls", entry.long_name);
+				nice_wprintf(g_conout, L" [--%ls", entry.long_name);
 
-			if (entry.num_values) wprintf(L" %ls", entry.long_name);
+			if (entry.num_values) nice_wprintf(g_conout, L" %ls", entry.long_name);
 
 			printf("]");
 		}
 		else // Is argument
 		{
-			wprintf(L" <%ls", entry.long_name);
+			nice_wprintf(g_conout, L" <%ls", entry.long_name);
 			if (entry.num_values) printf("...");
 			printf(">");
 		}
@@ -45,13 +43,13 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 		const auto& entry = entries[i];
 		if (!entry.short_name) continue;
 
-		wprintf(L"\t\x1b[1m-%ls\x1b[0m", entry.short_name);
-		if (entry.num_values) wprintf(L" %ls", entry.long_name);
+		nice_wprintf(g_conout, L"\t\x1b[1m-%ls\x1b[0m", entry.short_name);
+		if (entry.num_values) nice_wprintf(g_conout, L" %ls", entry.long_name);
 
 		if (entry.long_name)
 		{
-			wprintf(L", \x1b[1m--%ls\x1b[0m", entry.long_name);
-			if (entry.num_values) wprintf(L" %ls", entry.long_name);
+			nice_wprintf(g_conout, L", \x1b[1m--%ls\x1b[0m", entry.long_name);
+			if (entry.num_values) nice_wprintf(g_conout, L" %ls", entry.long_name);
 		}
 
 		if (entry.description)
@@ -73,7 +71,7 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 
 		printf("\t");
 
-		wprintf(L"\x1b[1m%ls", entry.long_name);
+		nice_wprintf(g_conout, L"\x1b[1m%ls", entry.long_name);
 		if (entry.num_values) printf("...");
 		printf("\x1b[0m");
 		if (entry.description)
@@ -146,7 +144,7 @@ bool parse_args(ArgEntry* arg_entries, const int arg_entries_count, const int ar
 		{
 			if (!entry_matched)
 			{
-				wprintf(L"No option \"%ls\" found!\n", argv[i]);
+				nice_wprintf(g_conout, L"No option \"%ls\" found!\n", argv[i]);
 				print_usage(arg_entries, arg_entries_count);
 				return 0;
 			}
