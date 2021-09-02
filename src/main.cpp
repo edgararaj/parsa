@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <limits>
+#include <io.h>
+#include <fcntl.h>
+#include <assert.h>
 
 typedef int64_t i64;
 typedef uint64_t u64;
@@ -14,6 +17,7 @@ typedef uint64_t u64;
 
 #define ARR_COUNT(x) (sizeof(x)/sizeof(x[0]))
 
+#include "nice_wprintf.cpp"
 #include "wcslcpy.cpp"
 #include "wcslcat.cpp"
 #include "args_parser.cpp"
@@ -109,7 +113,6 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 	return result;
 }
 
-
 int wmain(int argc, const wchar_t** argv)
 {
 	// Enable conhost ascii escape sequences
@@ -128,12 +131,12 @@ int wmain(int argc, const wchar_t** argv)
 		return 1;
 
 #ifdef PARSA_DEBUG
-	printf("--------ARGS--------\n");
+	nice_wprintf(L"--------ARGS--------\n");
 	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
 	{
-		wprintf(L"--%ls: %ls\n", arg_entries[i].long_name, arg_entries[i].value);
+		nice_wprintf(L"--%ls: %ls\n", arg_entries[i].long_name, arg_entries[i].value);
 	}
-	printf("--------------------\n\n");
+	nice_wprintf(L"--------------------\n\n");
 #endif
 
 	const auto in_path = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"path");
