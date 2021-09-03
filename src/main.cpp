@@ -119,17 +119,17 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 	return result;
 }
 
-Optional<bool> get_canonical_selector(wchar_t* dest, const size_t dest_count, const wchar_t* src)
+Optional<bool> get_canonical_selector(wchar_t* dest, const size_t dest_count, const wchar_t* src, const bool check_for_star)
 {
-	wchar_t* full_path_file_part;
+	wchar_t* abs_path_file_part;
 	if (dest_count > std::numeric_limits<DWORD>::max()) return {};
-	const auto full_path_written = GetFullPathNameW(src, (DWORD)dest_count, dest, &full_path_file_part);
-	if (!full_path_written || full_path_written > dest_count) return {};
+	const auto abs_path_written = GetFullPathNameW(src, (DWORD)dest_count, dest, &abs_path_file_part);
+	if (!abs_path_written || abs_path_written > dest_count) return {};
 	auto selecting_many = PathIsDirectoryW(dest);
 
 	if (selecting_many)
 	{
-		if (full_path_file_part)
+		if (abs_path_file_part)
 		{
 			if (wcslcat(dest, L"\\*", dest_count) >= dest_count)
 			{
@@ -148,9 +148,9 @@ Optional<bool> get_canonical_selector(wchar_t* dest, const size_t dest_count, co
 	}
 	else
 	{
-		if (full_path_file_part)
+		if (abs_path_file_part && check_for_star)
 		{
-			if (wcschr(full_path_file_part, L'*'))
+			if (wcschr(abs_path_file_part, L'*'))
 				selecting_many = 1;
 		}
 	}
@@ -180,6 +180,25 @@ bool get_path_dir(wchar_t* dest, size_t dest_count, const wchar_t* src)
 	return 1;
 }
 
+const wchar_t* get_rel_path(const wchar_t* abs_path, const wchar_t* curr_dir)
+{
+	const wchar_t* result = abs_path;
+
+	bool match = 1;
+	for (auto c = curr_dir; *c && match; c++)
+	{
+		if (*c == *result)
+		{
+			result++;
+			match = 1;
+		}
+		else
+			match = 0;
+	}
+
+	return match ? result : abs_path;
+}
+
 int wmain(int argc, const wchar_t** argv)
 {
 	// Enable conhost ascii escape sequences
@@ -207,35 +226,48 @@ int wmain(int argc, const wchar_t** argv)
 	printf("--------------------\n\n");
 #endif
 
-	const auto in_path = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"path");
-	wchar_t in_full_path[64];
-	auto canonical_selector_result = get_canonical_selector(in_full_path, ARR_COUNT(in_full_path), in_path);
+	const auto in_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"path");
+	wchar_t in_abs_path[64];
+	auto canonical_selector_result = get_canonical_selector(in_abs_path, ARR_COUNT(in_abs_path), in_path_arg, 1);
 	if (!canonical_selector_result.has_value()) return 1;
 	const auto in_path_selecting_many = canonical_selector_result.value();
 
-	const auto out_path = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"out");
-	wchar_t out_full_path[64];
-	canonical_selector_result = get_canonical_selector(out_full_path, ARR_COUNT(out_full_path), out_path);
+	const auto out_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"out");
+	wchar_t out_abs_path[64];
+	canonical_selector_result = get_canonical_selector(out_abs_path, ARR_COUNT(out_abs_path), out_path_arg, 0);
 	if (!canonical_selector_result.has_value()) return 1;
 	const auto out_path_selecting_many = canonical_selector_result.value();
 
 	if (in_path_selecting_many && !out_path_selecting_many)
 	{
-		printf("Please specify a directory to output to!\n");
+		printf("Please specify a valid directory for output!\n");
 		return 1;
 	}
 
-	wchar_t in_full_path_dir[64];
-	if (!get_path_dir(in_full_path_dir, ARR_COUNT(in_full_path_dir), in_full_path))
+	wchar_t current_dir[64];
+	const auto current_dir_result = GetCurrentDirectoryW(ARR_COUNT(current_dir), current_dir);
+	if (!current_dir_result || current_dir_result > ARR_COUNT(current_dir))
 		return 1;
 
-	wchar_t out_full_path_dir[64];
-	if (!get_path_dir(out_full_path_dir, ARR_COUNT(out_full_path_dir), out_full_path))
+	if (wcslcat(current_dir, L"\\", ARR_COUNT(current_dir)) >= ARR_COUNT(current_dir))
+	{
+		printf("File path is too large!\n");
+		return 1;
+	}
+	const auto in_path = get_rel_path(in_abs_path, current_dir);
+	const auto out_path = get_rel_path(out_abs_path, current_dir);
+
+	wchar_t in_path_dir[64];
+	if (!get_path_dir(in_path_dir, ARR_COUNT(in_path_dir), in_path))
+		return 1;
+
+	wchar_t out_path_dir[64];
+	if (!get_path_dir(out_path_dir, ARR_COUNT(out_path_dir), out_path))
 		return 1;
 
 	{
 		WIN32_FIND_DATAW ffd;
-		auto search_handle = FindFirstFileW(in_full_path, &ffd);
+		auto search_handle = FindFirstFileW(in_path, &ffd);
 		if (INVALID_HANDLE_VALUE == search_handle) return 1;
 		do {
 			if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
@@ -243,7 +275,7 @@ int wmain(int argc, const wchar_t** argv)
 
 			const auto in_file_name = ffd.cFileName;
 			wchar_t in_file_path[64];
-			if (wcslcpy(in_file_path, in_full_path_dir, ARR_COUNT(in_file_path)) >= ARR_COUNT(in_file_path))
+			if (wcslcpy(in_file_path, in_path_dir, ARR_COUNT(in_file_path)) >= ARR_COUNT(in_file_path))
 			{
 				printf("File path is too large!\n");
 				continue;
@@ -259,7 +291,7 @@ int wmain(int argc, const wchar_t** argv)
 			wchar_t out_file_path[64];
 			if (out_path_selecting_many)
 			{
-				if (wcslcpy(out_file_path, out_full_path_dir, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
+				if (wcslcpy(out_file_path, out_path_dir, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
 				{
 					printf("File path is too large!\n");
 					continue;
@@ -272,7 +304,7 @@ int wmain(int argc, const wchar_t** argv)
 			}
 			else
 			{
-				if (wcslcpy(out_file_path, out_full_path, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
+				if (wcslcpy(out_file_path, out_abs_path, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
 				{
 					printf("File path is too large!\n");
 					continue;
