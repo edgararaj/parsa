@@ -12,7 +12,6 @@ typedef uint64_t u64;
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
-#undef _UNICODE
 #include <windows.h>
 
 #define ARR_COUNT(x) (sizeof(x)/sizeof(x[0]))
