@@ -159,6 +159,27 @@ Optional<bool> get_canonical_selector(wchar_t* dest, const size_t dest_count, co
 	return selecting_many;
 }
 
+bool get_path_dir(wchar_t* dest, size_t dest_count, const wchar_t* src)
+{
+	const auto src_last_slash = get_last_slash(src);
+	if (src_last_slash)
+	{
+		const size_t size = src_last_slash - src + 1;
+		if (size >= dest_count)
+		{
+			printf("File path is too large!\n");
+			return 0;
+		}
+		wcslcpy(dest, src, size+1);
+	}
+	else
+	{
+		dest[0] = 0;
+	}
+
+	return 1;
+}
+
 int wmain(int argc, const wchar_t** argv)
 {
 	// Enable conhost ascii escape sequences
@@ -205,38 +226,12 @@ int wmain(int argc, const wchar_t** argv)
 	}
 
 	wchar_t in_full_path_dir[64];
-	const auto in_full_path_last_slash = get_last_slash(in_full_path);
-	if (in_full_path_last_slash)
-	{
-		const auto size = in_full_path_last_slash - in_full_path + 1;
-		if (size >= ARR_COUNT(in_full_path_dir))
-		{
-			printf("File path is too large!\n");
-			return 1;
-		}
-		wcslcpy(in_full_path_dir, in_full_path, size+1);
-	}
-	else
-	{
-		in_full_path_dir[0] = 0;
-	}
+	if (!get_path_dir(in_full_path_dir, ARR_COUNT(in_full_path_dir), in_full_path))
+		return 1;
 
 	wchar_t out_full_path_dir[64];
-	const auto out_full_path_last_slash = get_last_slash(out_full_path);
-	if (out_full_path_last_slash)
-	{
-		const auto size = out_full_path_last_slash - out_full_path + 1;
-		if (size >= ARR_COUNT(out_full_path_dir))
-		{
-			printf("File path is too large!\n");
-			return 1;
-		}
-		wcslcpy(out_full_path_dir, out_full_path, size+1);
-	}
-	else
-	{
-		out_full_path_dir[0] = 0;
-	}
+	if (!get_path_dir(out_full_path_dir, ARR_COUNT(out_full_path_dir), out_full_path))
+		return 1;
 
 	{
 		WIN32_FIND_DATAW ffd;
