@@ -17,11 +17,11 @@ HANDLE create_wo_file(const wchar_t* file_path)
 		nice_wprintf(g_conout, L"Failed to create file \"%ls\"", file_path);
 		const auto error = GetLastError();
 		if (ERROR_FILE_EXISTS == error)
-			printf(": File already exists");
+			wprintf(L": File already exists");
 		else if (ERROR_PATH_NOT_FOUND == error)
-			printf(": Path doesn't exist");
+			wprintf(L": Path doesn't exist");
 
-		printf("!\n");
+		wprintf(L"!\n");
 
 		return 0;
 	}
@@ -65,11 +65,11 @@ HANDLE open_ro_file(const wchar_t* file_path)
 		nice_wprintf(g_conout, L"Failed to open file \"%ls\"", file_path);
 		const auto error = GetLastError();
 		if (ERROR_FILE_NOT_FOUND == error)
-			printf(": File doesn't exist");
+			wprintf(L": File doesn't exist");
 		else if (ERROR_FILE_CHECKED_OUT == error)
-			printf(": File is being used by other program");
+			wprintf(L": File is being used by other program");
 
-		printf("!\n");
+		wprintf(L"!\n");
 
 		return 0;
 	}
@@ -221,7 +221,7 @@ const FileBuffer read_file_to_unix_buffer(const wchar_t* file_path)
 	const auto file_buffer = (char*)VirtualAlloc(0, file_view.buffer.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!file_buffer)
 	{
-		printf("Failed to allocate memory!\n");
+		wprintf(L"Failed to allocate memory!\n");
 		return {};
 	}
 
