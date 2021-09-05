@@ -271,7 +271,10 @@ int wmain(int argc, const wchar_t** argv)
 	{
 		WIN32_FIND_DATAW ffd;
 		auto search_handle = FindFirstFileW(in_path, &ffd);
-		if (INVALID_HANDLE_VALUE == search_handle) return 1;
+		if (INVALID_HANDLE_VALUE == search_handle) {
+			nice_wprintf(g_conout, L"File \"%ls\" not found!\n", in_path);
+			return 1;
+		}
 		do {
 			if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 				continue;
