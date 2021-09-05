@@ -98,6 +98,8 @@ const FileView create_ro_file_view(const wchar_t* file_path)
 	if (!file_map)
 	{
 		nice_wprintf(g_conout, L"Failed to create file mapping of file \"%ls\"!\n", file_path);
+		if (GetLastError() == ERROR_FILE_INVALID)
+			nice_wprintf(g_conout, L"File \"%ls\" is empty!\n", file_path);
 		return result;
 	}
 

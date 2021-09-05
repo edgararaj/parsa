@@ -118,22 +118,73 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 	return result;
 }
 
-Optional<bool> get_canonical_selector(wchar_t* dest, const size_t dest_count, const wchar_t* src, const bool check_for_star)
+const wchar_t* get_rel_path(const wchar_t* abs_path, const wchar_t* curr_dir)
+{
+	const wchar_t* result = abs_path;
+
+	bool match = 1;
+	for (auto c = curr_dir; *c && match; c++)
+	{
+		if (*c == *result)
+		{
+			result++;
+			match = 1;
+		}
+		else
+			match = 0;
+	}
+
+	return match ? result : abs_path;
+}
+
+enum class CanonicalSelectorResult {
+	None, File, Directory, Files
+};
+
+CanonicalSelectorResult get_canonical_selector(wchar_t* dest, const size_t dest_count, const wchar_t* src, const bool check_for_star)
 {
 	wchar_t* abs_path_file_part;
-	if (dest_count > std::numeric_limits<DWORD>::max()) return {};
-	const auto abs_path_written = GetFullPathNameW(src, (DWORD)dest_count, dest, &abs_path_file_part);
-	if (!abs_path_written || abs_path_written > dest_count) return {};
-	auto selecting_many = PathIsDirectoryW(dest);
+	wchar_t abs_path[64];
+	const auto abs_path_written = GetFullPathNameW(src, ARR_COUNT(abs_path), abs_path, &abs_path_file_part);
+	if (!abs_path_written || abs_path_written > ARR_COUNT(abs_path))
+	{
+		wprintf(L"File path is too large!\n");
+		return CanonicalSelectorResult::None;
+	}
 
-	if (selecting_many)
+	//if (dest_count > std::numeric_limits<DWORD>::max()) return CanonicalSelectorResult::None;
+
+	wchar_t current_dir[64];
+	const auto current_dir_result = GetCurrentDirectoryW(ARR_COUNT(current_dir), current_dir);
+	if (!current_dir_result || current_dir_result > ARR_COUNT(current_dir))
+	{
+		wprintf(L"File path is too large!\n");
+		return CanonicalSelectorResult::None;
+	}
+
+	if (wcslcat(current_dir, L"\\", ARR_COUNT(current_dir)) >= ARR_COUNT(current_dir))
+	{
+		wprintf(L"File path is too large!\n");
+		return CanonicalSelectorResult::None;
+	}
+
+	const auto rel_path = get_rel_path(abs_path, current_dir);
+	if (wcslcpy(dest, rel_path, dest_count) >= dest_count)
+	{
+		wprintf(L"File path is too large!\n");
+		return CanonicalSelectorResult::None;
+	}
+
+	auto is_dir = PathIsDirectoryW(dest);
+
+	if (is_dir)
 	{
 		if (abs_path_file_part)
 		{
 			if (wcslcat(dest, L"\\*", dest_count) >= dest_count)
 			{
 				wprintf(L"File path is too large!\n");
-				return {};
+				return CanonicalSelectorResult::None;
 			}
 		}
 		else
@@ -141,21 +192,17 @@ Optional<bool> get_canonical_selector(wchar_t* dest, const size_t dest_count, co
 			if (wcslcat(dest, L"*", dest_count) >= dest_count)
 			{
 				wprintf(L"File path is too large!\n");
-				return {};
+				return CanonicalSelectorResult::None;
 			}
 		}
+		return CanonicalSelectorResult::Directory;
 	}
 	else
 	{
-		if (abs_path_file_part && check_for_star)
-		{
-			if (wcschr(abs_path_file_part, L'*'))
-				selecting_many = 1;
-		}
+		if (abs_path_file_part && check_for_star && wcschr(abs_path_file_part, L'*'))
+			return CanonicalSelectorResult::Files;
+		return CanonicalSelectorResult::File;
 	}
-
-
-	return selecting_many;
 }
 
 bool get_path_dir(wchar_t* dest, size_t dest_count, const wchar_t* src)
@@ -177,25 +224,6 @@ bool get_path_dir(wchar_t* dest, size_t dest_count, const wchar_t* src)
 	}
 
 	return 1;
-}
-
-const wchar_t* get_rel_path(const wchar_t* abs_path, const wchar_t* curr_dir)
-{
-	const wchar_t* result = abs_path;
-
-	bool match = 1;
-	for (auto c = curr_dir; *c && match; c++)
-	{
-		if (*c == *result)
-		{
-			result++;
-			match = 1;
-		}
-		else
-			match = 0;
-	}
-
-	return match ? result : abs_path;
 }
 
 int wmain(int argc, const wchar_t** argv)
@@ -230,35 +258,20 @@ int wmain(int argc, const wchar_t** argv)
 #endif
 
 	const auto in_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"path");
-	wchar_t in_abs_path[64];
-	auto canonical_selector_result = get_canonical_selector(in_abs_path, ARR_COUNT(in_abs_path), in_path_arg, 1);
-	if (!canonical_selector_result.has_value()) return 1;
-	const auto in_path_selecting_many = canonical_selector_result.value();
+	wchar_t in_path[64];
+	const auto in_canonical_selector_result = get_canonical_selector(in_path, ARR_COUNT(in_path), in_path_arg, 1);
+	if (in_canonical_selector_result == CanonicalSelectorResult::None) return 1;
 
 	const auto out_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"out");
-	wchar_t out_abs_path[64];
-	canonical_selector_result = get_canonical_selector(out_abs_path, ARR_COUNT(out_abs_path), out_path_arg, 0);
-	if (!canonical_selector_result.has_value()) return 1;
-	const auto out_path_selecting_many = canonical_selector_result.value();
+	wchar_t out_path[64];
+	const auto out_canonical_selector_result = get_canonical_selector(out_path, ARR_COUNT(out_path), out_path_arg, 0);
+	if (out_canonical_selector_result == CanonicalSelectorResult::None) return 1;
 
-	if (in_path_selecting_many && !out_path_selecting_many)
+	if (in_canonical_selector_result >= CanonicalSelectorResult::Directory && out_canonical_selector_result == CanonicalSelectorResult::File)
 	{
 		wprintf(L"Please specify a valid directory for output!\n");
 		return 1;
 	}
-
-	wchar_t current_dir[64];
-	const auto current_dir_result = GetCurrentDirectoryW(ARR_COUNT(current_dir), current_dir);
-	if (!current_dir_result || current_dir_result > ARR_COUNT(current_dir))
-		return 1;
-
-	if (wcslcat(current_dir, L"\\", ARR_COUNT(current_dir)) >= ARR_COUNT(current_dir))
-	{
-		wprintf(L"File path is too large!\n");
-		return 1;
-	}
-	const auto in_path = get_rel_path(in_abs_path, current_dir);
-	const auto out_path = get_rel_path(out_abs_path, current_dir);
 
 	wchar_t in_path_dir[64];
 	if (!get_path_dir(in_path_dir, ARR_COUNT(in_path_dir), in_path))
@@ -272,10 +285,20 @@ int wmain(int argc, const wchar_t** argv)
 		WIN32_FIND_DATAW ffd;
 		auto search_handle = FindFirstFileW(in_path, &ffd);
 		if (INVALID_HANDLE_VALUE == search_handle) {
-			nice_wprintf(g_conout, L"File \"%ls\" not found!\n", in_path);
+			switch (in_canonical_selector_result)
+			{
+				case CanonicalSelectorResult::File:
+					nice_wprintf(g_conout, L"File \"%ls\" not found!\n", in_path);
+					break;
+				case CanonicalSelectorResult::Files:
+					nice_wprintf(g_conout, L"No matching files found for \"%ls\"!\n", in_path);
+					break;
+			}
 			return 1;
 		}
+		int items_found = 0;
 		do {
+			items_found++;
 			if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 				continue;
 
@@ -295,7 +318,7 @@ int wmain(int argc, const wchar_t** argv)
 			nice_wprintf(g_conout, L"Processing file \"%ls\"...\n", in_file_path);
 
 			wchar_t out_file_path[64];
-			if (out_path_selecting_many)
+			if (out_canonical_selector_result >= CanonicalSelectorResult::Directory)
 			{
 				if (wcslcpy(out_file_path, out_path_dir, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
 				{
@@ -310,7 +333,7 @@ int wmain(int argc, const wchar_t** argv)
 			}
 			else
 			{
-				if (wcslcpy(out_file_path, out_abs_path, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
+				if (wcslcpy(out_file_path, out_path, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
 				{
 					wprintf(L"File path is too large!\n");
 					continue;
@@ -363,11 +386,14 @@ int wmain(int argc, const wchar_t** argv)
 		}
 		while (FindNextFileW(search_handle, &ffd));
 
+		FindClose(search_handle);
+
+		if (in_canonical_selector_result == CanonicalSelectorResult::Directory && items_found == 2)
+			nice_wprintf(g_conout, L"Directory \"%ls\" is empty!\n", in_path_dir);
+
 		const auto error = GetLastError();
 		if (ERROR_NO_MORE_FILES != error)
 			return 1;
-
-		FindClose(search_handle);
 	}
 
 	return 0;
