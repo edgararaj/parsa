@@ -13,7 +13,10 @@ int nice_wprintf(const HANDLE handle, const wchar_t* fmt, ...)
 
 	DWORD chars_written;
 	if (!WriteConsoleW(handle, buffer, (DWORD)chars_to_write, &chars_written, 0))
+	{
+		wprintf(buffer);
 		return 0;
+	}
 
 	return chars_written;
 }

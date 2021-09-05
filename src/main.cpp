@@ -69,7 +69,7 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 		for (; *statement_arg_start == ' '; statement_arg_start++);
 		if (*statement_arg_start != '"')
 		{
-			printf("Can't find opening \" for statement: #include\n");
+			wprintf(L"Can't find opening \" for statement: #include\n");
 			break;
 		}
 
@@ -77,7 +77,7 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 		for (; *statement_arg_end != '"' && *statement_arg_end != '\n' && *statement_arg_end; statement_arg_end++);
 		if (*statement_arg_end != '"')
 		{
-			printf("Can't find closing \" for statement: #include\n");
+			wprintf(L"Can't find closing \" for statement: #include\n");
 			break;
 		}
 
@@ -87,7 +87,7 @@ const ProcessResult process_include_statements(IncludeStatement* includes, const
 
 		const auto include_file_path_size = statement_arg_end - statement_arg_start - 1;
 		if (!include_file_path_size || include_file_path_size > std::numeric_limits<int>::max()) {
-			printf("Invalid file path for statement: #include\n");
+			wprintf(L"Invalid file path for statement: #include\n");
 			haystack = statement_arg_end;
 			continue;
 		}
@@ -132,7 +132,7 @@ Optional<bool> get_canonical_selector(wchar_t* dest, const size_t dest_count, co
 		{
 			if (wcslcat(dest, L"\\*", dest_count) >= dest_count)
 			{
-				printf("File path is too large!\n");
+				wprintf(L"File path is too large!\n");
 				return {};
 			}
 		}
@@ -140,7 +140,7 @@ Optional<bool> get_canonical_selector(wchar_t* dest, const size_t dest_count, co
 		{
 			if (wcslcat(dest, L"*", dest_count) >= dest_count)
 			{
-				printf("File path is too large!\n");
+				wprintf(L"File path is too large!\n");
 				return {};
 			}
 		}
@@ -166,7 +166,7 @@ bool get_path_dir(wchar_t* dest, size_t dest_count, const wchar_t* src)
 		const size_t size = src_last_slash - src + 1;
 		if (size >= dest_count)
 		{
-			printf("File path is too large!\n");
+			wprintf(L"File path is too large!\n");
 			return 0;
 		}
 		wcslcpy(dest, src, size+1);
@@ -206,23 +206,27 @@ int wmain(int argc, const wchar_t** argv)
 	DWORD mode;
 	GetConsoleMode(g_conout, &mode);
 	SetConsoleMode(g_conout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+	_setmode(_fileno(stdout), _O_U16TEXT);
 
 	ArgEntry arg_entries[] = {
-		{L"h", L"help", "Display this message", 0},
-		{L"o", L"out", "Output directory/file", L"gen/", 1},
-		{0, L"path", "Directory or file(s) to preprocess", L"*.js", -1},
+		{L"h", L"help", L"Display this message", 0},
+		{L"o", L"out", L"Output directory/file", L"gen/", 1},
+		{0, L"path", L"Directory or file(s) to preprocess", L"*.js", -1},
 	};
 
-	if (!parse_args(arg_entries, ARR_COUNT(arg_entries), argc, argv))
+	const auto parse_args_result = parse_args(arg_entries, ARR_COUNT(arg_entries), argc, argv);
+	if (parse_args_result == ParseArgsResult::Error)
 		return 1;
+	else if (parse_args_result == ParseArgsResult::Help)
+		return 0;
 
 #ifdef PARSA_DEBUG
-	printf("--------ARGS--------\n");
+	wprintf(L"--------ARGS--------\n");
 	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
 	{
 		nice_wprintf(g_conout, L"--%ls: %ls\n", arg_entries[i].long_name, arg_entries[i].value);
 	}
-	printf("--------------------\n\n");
+	wprintf(L"--------------------\n\n");
 #endif
 
 	const auto in_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"path");
@@ -239,7 +243,7 @@ int wmain(int argc, const wchar_t** argv)
 
 	if (in_path_selecting_many && !out_path_selecting_many)
 	{
-		printf("Please specify a valid directory for output!\n");
+		wprintf(L"Please specify a valid directory for output!\n");
 		return 1;
 	}
 
@@ -250,7 +254,7 @@ int wmain(int argc, const wchar_t** argv)
 
 	if (wcslcat(current_dir, L"\\", ARR_COUNT(current_dir)) >= ARR_COUNT(current_dir))
 	{
-		printf("File path is too large!\n");
+		wprintf(L"File path is too large!\n");
 		return 1;
 	}
 	const auto in_path = get_rel_path(in_abs_path, current_dir);
@@ -276,12 +280,12 @@ int wmain(int argc, const wchar_t** argv)
 			wchar_t in_file_path[64];
 			if (wcslcpy(in_file_path, in_path_dir, ARR_COUNT(in_file_path)) >= ARR_COUNT(in_file_path))
 			{
-				printf("File path is too large!\n");
+				wprintf(L"File path is too large!\n");
 				continue;
 			}
 			if (wcslcat(in_file_path, in_file_name, ARR_COUNT(in_file_path)) >= ARR_COUNT(in_file_path))
 			{
-				printf("File path is too large!\n");
+				wprintf(L"File path is too large!\n");
 				continue;
 			}
 
@@ -292,12 +296,12 @@ int wmain(int argc, const wchar_t** argv)
 			{
 				if (wcslcpy(out_file_path, out_path_dir, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
 				{
-					printf("File path is too large!\n");
+					wprintf(L"File path is too large!\n");
 					continue;
 				}
 				if (wcslcat(out_file_path, in_file_name, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
 				{
-					printf("File path is too large!\n");
+					wprintf(L"File path is too large!\n");
 					continue;
 				}
 			}
@@ -305,7 +309,7 @@ int wmain(int argc, const wchar_t** argv)
 			{
 				if (wcslcpy(out_file_path, out_abs_path, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
 				{
-					printf("File path is too large!\n");
+					wprintf(L"File path is too large!\n");
 					continue;
 				}
 			}
@@ -321,7 +325,7 @@ int wmain(int argc, const wchar_t** argv)
 			const auto out_buffer = (char*)VirtualAlloc(0, process_result.out_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 			if (!out_buffer)
 			{
-				printf("Failed to allocate memory!\n");
+				wprintf(L"Failed to allocate memory!\n");
 				continue;
 			}
 
