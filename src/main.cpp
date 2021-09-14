@@ -238,8 +238,8 @@ int wmain(int argc, const wchar_t** argv)
 
 	ArgEntry arg_entries[] = {
 		{L"h", L"help", L"Display this message"},
-		{L"o", L"out", L"Output directory/file", 1, L"gen/"},
-		{0, L"path", L"Directory or file(s) to preprocess", -1, L"*.js"},
+		{L"o", L"out", L"Output directory/file", ArgEntry::Type::Option, L"gen/"},
+		{0, L"path", L"Directory or file(s) to preprocess", ArgEntry::Type::MultiArg, L"*.js"},
 	};
 
 	const auto parse_args_result = parse_args(arg_entries, ARR_COUNT(arg_entries), argc, argv);
@@ -252,7 +252,7 @@ int wmain(int argc, const wchar_t** argv)
 	wprintf(L"--------ARGS--------\n");
 	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
 	{
-		nice_wprintf(g_conout, L"--%ls(%d/%d): ", arg_entries[i].long_name, arg_entries[i].value_count, arg_entries[i].expected_value_count);
+		nice_wprintf(g_conout, L"--%ls: ", arg_entries[i].long_name);
 		auto value = arg_entries[i].value;
 		int j = 0;
 		for (; j < arg_entries[i].value_count; j++)
