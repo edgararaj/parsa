@@ -3,13 +3,42 @@ struct ArgEntry
 	const wchar_t* const short_name;
 	const wchar_t* const long_name;
 	const wchar_t* const description;
+	const int expected_value_count;
 	const wchar_t* value;
-	int num_values;
-	bool already_filled;
+
+	// RESERVED
+	int value_count;
+
+	bool already_filled() const
+	{
+		return expected_value_count != -1 && value_count >= expected_value_count;
+	}
 };
 
 void print_usage(const ArgEntry* entries, const int entries_count)
 {
+	const auto print_option_args = [](const ArgEntry& entry, bool is_argument)
+	{
+		const auto arg = entry.long_name ? entry.long_name : entry.short_name;
+		if (entry.expected_value_count == -1)
+		{
+			if (is_argument)
+				nice_wprintf(g_conout, L" <%ls...>", arg);
+			else
+				nice_wprintf(g_conout, L" %ls...", arg);
+		}
+		else
+		{
+			for (int j = 0; j < entry.expected_value_count; j++)
+			{
+				if (is_argument)
+					nice_wprintf(g_conout, L" <%ls>", arg);
+				else
+					nice_wprintf(g_conout, L" %ls", arg);
+			}
+		}
+	};
+
 	wprintf(L"Usage:\n");
 	wprintf(L"\t\x1b[1mparsa\x1b[0m");
 	for (int i = 0; i < entries_count; i++)
@@ -24,15 +53,13 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 			else
 				nice_wprintf(g_conout, L" [--%ls", entry.long_name);
 
-			if (entry.num_values) nice_wprintf(g_conout, L" %ls", entry.long_name);
+			print_option_args(entry, false);
 
 			wprintf(L"]");
 		}
 		else // Is argument
 		{
-			nice_wprintf(g_conout, L" <%ls", entry.long_name);
-			if (entry.num_values) wprintf(L"...");
-			wprintf(L">");
+			print_option_args(entry, true);
 		}
 	}
 	wprintf(L"\n\n");
@@ -44,18 +71,19 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 		if (!entry.short_name) continue;
 
 		nice_wprintf(g_conout, L"\t\x1b[1m-%ls\x1b[0m", entry.short_name);
-		if (entry.num_values) nice_wprintf(g_conout, L" %ls", entry.long_name);
+		print_option_args(entry, false);
 
 		if (entry.long_name)
 		{
 			nice_wprintf(g_conout, L", \x1b[1m--%ls\x1b[0m", entry.long_name);
-			if (entry.num_values) nice_wprintf(g_conout, L" %ls", entry.long_name);
+			print_option_args(entry, false);
 		}
 
 		if (entry.description)
 		{
-			if (!entry.num_values) wprintf(L"\t");
-			wprintf(L"\t(%ls)", entry.description);
+			for (int j = 2; j > entry.expected_value_count; j--)
+				wprintf(L"\t");
+			wprintf(L"(%ls)", entry.description);
 		}
 
 		wprintf(L"\n");
@@ -72,12 +100,13 @@ void print_usage(const ArgEntry* entries, const int entries_count)
 		wprintf(L"\t");
 
 		nice_wprintf(g_conout, L"\x1b[1m%ls", entry.long_name);
-		if (entry.num_values) wprintf(L"...");
+		if (entry.expected_value_count == -1) wprintf(L"...");
 		wprintf(L"\x1b[0m");
 		if (entry.description)
 		{
-			if (!entry.num_values) wprintf(L"\t");
-			wprintf(L"\t(%ls)", entry.description);
+			for (int j = 2; j > entry.expected_value_count; j--)
+				wprintf(L"\t");
+			wprintf(L"(%ls)", entry.description);
 		}
 
 		wprintf(L"\n");
@@ -109,39 +138,48 @@ ParseArgsResult parse_args(ArgEntry* arg_entries, const int arg_entries_count, c
 	{
 		const auto arg_is_option = *argv[i] == L'-';
 
-		if (!arg_is_option && entry_matched)
+		if (arg_is_option || !entry_matched)
 		{
-			entry_matched->value = argv[i];
-			entry_matched->already_filled = 1;
-			entry_matched = 0;
-			continue;
-		}
-
-		for (int j = 0; j < arg_entries_count; j++)
-		{
-			auto& entry = arg_entries[j];
-			if (arg_is_option)
+			for (int j = 0; j < arg_entries_count; j++)
 			{
-				if (entry.short_name)
+				auto& entry = arg_entries[j];
+				if (arg_is_option)
 				{
-					auto next_char = argv[i]+1;
-					if (*next_char && wcscmp(next_char, entry.short_name) == 0 ||
-							*(next_char++) == L'-' && *next_char && entry.long_name && wcscmp(next_char, entry.long_name) == 0)
+					if (entry.short_name)
+					{
+						auto next_char = argv[i]+1;
+						if (*next_char && wcscmp(next_char, entry.short_name) == 0 ||
+								*(next_char++) == L'-' && *next_char && entry.long_name && wcscmp(next_char, entry.long_name) == 0)
+						{
+							entry_matched = &entry;
+							break;
+						}
+					}
+				}
+				else
+				{
+					if (!entry.already_filled() && !entry.short_name)
 					{
 						entry_matched = &entry;
 						break;
 					}
 				}
 			}
-			else
+		}
+
+		if (!arg_is_option && entry_matched)
+		{
+			if (entry_matched->already_filled())
 			{
-				if (!entry.already_filled && !entry.short_name)
-				{
-					entry.value = argv[i];
-					entry.already_filled = 1;
-					break;
-				}
+				nice_wprintf(g_conout, L"Option \"--%ls\" expected %d arguments!\n", entry_matched->long_name, entry_matched->expected_value_count);
+				return ParseArgsResult::Error;
 			}
+
+			if (!entry_matched->value_count)
+				entry_matched->value = argv[i];
+			entry_matched->value_count++;
+
+			continue;
 		}
 
 		if (arg_is_option)
@@ -154,7 +192,7 @@ ParseArgsResult parse_args(ArgEntry* arg_entries, const int arg_entries_count, c
 			}
 			else
 			{
-				if (!entry_matched->num_values)
+				if (!entry_matched->expected_value_count)
 				{
 					if (entry_matched->short_name && wcscmp(entry_matched->short_name, L"h") == 0)
 					{
@@ -163,8 +201,6 @@ ParseArgsResult parse_args(ArgEntry* arg_entries, const int arg_entries_count, c
 					}
 
 					entry_matched->value = L"";
-					entry_matched->already_filled = 1;
-					entry_matched = 0;
 				}
 			}
 		}
