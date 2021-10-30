@@ -143,58 +143,40 @@ enum class CanonicalSelectorResult {
 
 CanonicalSelectorResult get_canonical_selector(wchar_t* dest, const size_t dest_count, const wchar_t* src, const bool check_for_star)
 {
+	const auto file_too_large_error = []() {
+		wprintf(L"File path is too large!\n");
+		return CanonicalSelectorResult::None;
+	};
+
 	wchar_t* abs_path_file_part;
 	wchar_t abs_path[64];
 	const auto abs_path_written = GetFullPathNameW(src, ARR_COUNT(abs_path), abs_path, &abs_path_file_part);
 	if (!abs_path_written || abs_path_written > ARR_COUNT(abs_path))
-	{
-		wprintf(L"File path is too large!\n");
-		return CanonicalSelectorResult::None;
-	}
+		return file_too_large_error();
 
 	//if (dest_count > std::numeric_limits<DWORD>::max()) return CanonicalSelectorResult::None;
 
 	wchar_t current_dir[64];
 	const auto current_dir_result = GetCurrentDirectoryW(ARR_COUNT(current_dir), current_dir);
 	if (!current_dir_result || current_dir_result > ARR_COUNT(current_dir))
-	{
-		wprintf(L"File path is too large!\n");
-		return CanonicalSelectorResult::None;
-	}
+		return file_too_large_error();
 
 	if (wcslcat(current_dir, L"\\", ARR_COUNT(current_dir)) >= ARR_COUNT(current_dir))
-	{
-		wprintf(L"File path is too large!\n");
-		return CanonicalSelectorResult::None;
-	}
+		return file_too_large_error();
 
 	const auto rel_path = get_rel_path(abs_path, current_dir);
 	if (wcslcpy(dest, rel_path, dest_count) >= dest_count)
-	{
-		wprintf(L"File path is too large!\n");
-		return CanonicalSelectorResult::None;
-	}
+		return file_too_large_error();
 
-	auto is_dir = PathIsDirectoryW(dest);
-
-	if (is_dir)
+	if (PathIsDirectoryW(dest))
 	{
 		if (abs_path_file_part)
 		{
-			if (wcslcat(dest, L"\\*", dest_count) >= dest_count)
-			{
-				wprintf(L"File path is too large!\n");
-				return CanonicalSelectorResult::None;
-			}
+			if (wcslcat(dest, L"\\", dest_count) >= dest_count)
+				return file_too_large_error();
 		}
-		else
-		{
-			if (wcslcat(dest, L"*", dest_count) >= dest_count)
-			{
-				wprintf(L"File path is too large!\n");
-				return CanonicalSelectorResult::None;
-			}
-		}
+		if (wcslcat(dest, L"*", dest_count) >= dest_count)
+			return file_too_large_error();
 		return CanonicalSelectorResult::Directory;
 	}
 	else
@@ -219,9 +201,7 @@ bool get_path_dir(wchar_t* dest, size_t dest_count, const wchar_t* src)
 		wcslcpy(dest, src, size+1);
 	}
 	else
-	{
 		dest[0] = 0;
-	}
 
 	return 1;
 }
