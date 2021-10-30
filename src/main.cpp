@@ -285,6 +285,7 @@ int wmain(int argc, const wchar_t** argv)
 
 			const auto in_file_name = ffd.cFileName;
 			wchar_t in_file_path[64];
+			// generate in_file_path {{{
 			if (wcslcpy(in_file_path, in_path_dir, ARR_COUNT(in_file_path)) >= ARR_COUNT(in_file_path))
 			{
 				wprintf(L"File path is too large!\n");
@@ -295,10 +296,10 @@ int wmain(int argc, const wchar_t** argv)
 				wprintf(L"File path is too large!\n");
 				continue;
 			}
-
-			nice_wprintf(g_conout, L"Processing file \"%ls\"...\n", in_file_path);
+			// }}}
 
 			wchar_t out_file_path[64];
+			// generate out_file_path {{{
 			if (out_canonical_selector_result >= CanonicalSelectorResult::Directory)
 			{
 				if (wcslcpy(out_file_path, out_path_dir, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
@@ -320,6 +321,9 @@ int wmain(int argc, const wchar_t** argv)
 					continue;
 				}
 			}
+			// }}}
+
+			nice_wprintf(g_conout, L"Processing file \"%ls\"...\n", in_file_path);
 
 			const auto in_file_buffer = read_file_to_unix_buffer(in_file_path);
 			if (!in_file_buffer.content)
