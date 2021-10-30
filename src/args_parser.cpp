@@ -1,112 +1,5 @@
-struct ArgEntry
-{
-	const wchar_t* const short_name;
-	const wchar_t* const long_name;
-	const wchar_t* const description;
-	enum class Type {
-		Flag, MultiArg, Option
-	};
-	const Type type;
-	const wchar_t* value;
-
-	// RESERVED
-	int value_count;
-
-	bool already_filled() const
-	{
-		return value_count > 1 && type == Type::Option;
-	}
-};
-
-void print_usage(const ArgEntry* entries, const int entries_count)
-{
-	nice_wprintf(g_conout, L"Usage:\n");
-	nice_wprintf(g_conout, L"\t\x1b[1mparsa\x1b[0m");
-	for (int i = 0; i < entries_count; i++)
-	{
-		const auto& entry = entries[i];
-		if (entry.short_name && wcscmp(entry.short_name, L"h") == 0) continue;
-
-		if (entry.type == ArgEntry::Type::Option || entry.type == ArgEntry::Type::Flag)
-		{
-			if (entry.short_name)
-				nice_wprintf(g_conout, L" [-%ls", entry.short_name);
-			else
-				nice_wprintf(g_conout, L" [--%ls", entry.long_name);
-
-			if (entry.type == ArgEntry::Type::Option)
-			{
-				if (entry.long_name)
-					nice_wprintf(g_conout, L" %ls", entry.long_name);
-				else
-					nice_wprintf(g_conout, L" %ls", entry.short_name);
-			}
-
-			nice_wprintf(g_conout, L"]");
-		}
-		else // Is multi argument
-			nice_wprintf(g_conout, L" <%ls...>", entry.long_name);
-	}
-	nice_wprintf(g_conout, L"\n\n");
-
-	wchar_t terminal_table[64][256];
-	nice_wprintf(g_conout, L"Options:\n");
-	for (int i = 0; i < entries_count; i++)
-	{
-		const auto& entry = entries[i];
-		if (entry.type != ArgEntry::Type::Option && entry.type != ArgEntry::Type::Flag) continue;
-
-		nice_wprintf(g_conout, L"\t");
-		//swprintf(terminal_table[0], ARR_COUNT(terminal_table[0]), L"\t");
-		if (entry.short_name)
-		{
-			nice_wprintf(g_conout, L"\x1b[1m-%ls\x1b[0m", entry.short_name);
-			if (entry.type == ArgEntry::Type::Option)
-			{
-				if (entry.long_name)
-					nice_wprintf(g_conout, L" %ls", entry.long_name);
-				else
-					nice_wprintf(g_conout, L" %ls", entry.short_name);
-			}
-		}
-
-		if (entry.long_name)
-		{
-			if (entry.short_name)
-				nice_wprintf(g_conout, L", ");
-
-			nice_wprintf(g_conout, L"\x1b[1m--%ls\x1b[0m", entry.long_name);
-			if (entry.type == ArgEntry::Type::Option)
-			{
-				if (entry.long_name)
-					nice_wprintf(g_conout, L" %ls", entry.long_name);
-				else
-					nice_wprintf(g_conout, L" %ls", entry.short_name);
-			}
-		}
-
-		if (entry.description)
-			nice_wprintf(g_conout, L"\t(%ls)", entry.description);
-
-		nice_wprintf(g_conout, L"\n");
-	}
-	nice_wprintf(g_conout, L"\n");
-
-	nice_wprintf(g_conout, L"Arguments:\n");
-	for (int i = 0; i < entries_count; i++)
-	{
-		const auto& entry = entries[i];
-		if (entry.type != ArgEntry::Type::MultiArg) continue;
-
-		nice_wprintf(g_conout, L"\t");
-
-		nice_wprintf(g_conout, L"\x1b[1m%ls...\x1b[0m", entry.long_name);
-		if (entry.description)
-			nice_wprintf(g_conout, L"\t(%ls)", entry.description);
-
-		nice_wprintf(g_conout, L"\n");
-	}
-}
+#include "args_parser.h"
+#include "args_parser_tui.cpp"
 
 const wchar_t* get_arg_entry_value(const ArgEntry* entries, const int entries_count, const wchar_t* entry_name) {
 	for (int i = 0; i < entries_count; i++)
@@ -186,14 +79,14 @@ ParseArgsResult parse_args(ArgEntry* arg_entries, const int arg_entries_count, c
 			if (!entry_matched)
 			{
 				nice_wprintf(g_conout, L"No option \"%ls\" found!\n", argv[i]);
-				print_usage(arg_entries, arg_entries_count);
+				print_help(arg_entries, arg_entries_count);
 				return ParseArgsResult::Error;
 			}
 			else if (entry_matched->type == ArgEntry::Type::Flag)
 			{
 				if (entry_matched->short_name && wcscmp(entry_matched->short_name, L"h") == 0)
 				{
-					print_usage(arg_entries, arg_entries_count);
+					print_help(arg_entries, arg_entries_count);
 					return ParseArgsResult::Help;
 				}
 

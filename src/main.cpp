@@ -7,21 +7,19 @@
 #include <fcntl.h>
 #include <assert.h>
 
+#include "wcslcpy.cpp"
+#include "wcslcat.cpp"
+
 typedef int64_t i64;
 typedef uint64_t u64;
+
+#define ARR_COUNT(x) (sizeof(x)/sizeof(x[0]))
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 
-#define ARR_COUNT(x) (sizeof(x)/sizeof(x[0]))
-
-#include <shlwapi.h>
-
-#include "optional.cpp"
 #include "nice_wprintf.cpp"
-#include "wcslcpy.cpp"
-#include "wcslcat.cpp"
 
 HANDLE g_conout;
 
@@ -168,7 +166,7 @@ CanonicalSelectorResult get_canonical_selector(wchar_t* dest, const size_t dest_
 	if (wcslcpy(dest, rel_path, dest_count) >= dest_count)
 		return file_too_large_error();
 
-	if (PathIsDirectoryW(dest))
+	if (GetFileAttributesW(dest) & FILE_ATTRIBUTE_DIRECTORY)
 	{
 		if (abs_path_file_part)
 		{
