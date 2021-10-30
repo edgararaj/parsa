@@ -120,19 +120,10 @@ const wchar_t* get_rel_path(const wchar_t* abs_path, const wchar_t* curr_dir)
 {
 	const wchar_t* result = abs_path;
 
-	bool match = 1;
-	for (auto c = curr_dir; *c && match; c++)
-	{
-		if (*c == *result)
-		{
-			result++;
-			match = 1;
-		}
-		else
-			match = 0;
-	}
+	for (auto c = curr_dir; *c; c++)
+		if (*c != *result++) return abs_path;
 
-	return match ? result : abs_path;
+	return result;
 }
 
 enum class CanonicalSelectorResult {
