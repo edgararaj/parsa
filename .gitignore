@@ -1,6 +1,4 @@
 .vs/
 build_debug/
 build_release/
-test/
-gen/
-input/
+test_files/
