@@ -20,92 +20,91 @@ struct ArgEntry
 
 void print_usage(const ArgEntry* entries, const int entries_count)
 {
-	const auto print_option_args = [](const ArgEntry& entry, bool is_argument)
-	{
-		const auto arg = entry.long_name ? entry.long_name : entry.short_name;
-		if (entry.type == ArgEntry::Type::MultiArg)
-		{
-			if (is_argument)
-				nice_wprintf(g_conout, L" <%ls...>", arg);
-			else
-				nice_wprintf(g_conout, L" %ls...", arg);
-		}
-		else if (entry.type == ArgEntry::Type::Option)
-		{
-			if (is_argument)
-				nice_wprintf(g_conout, L" <%ls>", arg);
-			else
-				nice_wprintf(g_conout, L" %ls", arg);
-		}
-	};
-
-	wprintf(L"Usage:\n");
-	wprintf(L"\t\x1b[1mparsa\x1b[0m");
+	nice_wprintf(g_conout, L"Usage:\n");
+	nice_wprintf(g_conout, L"\t\x1b[1mparsa\x1b[0m");
 	for (int i = 0; i < entries_count; i++)
 	{
 		const auto& entry = entries[i];
 		if (entry.short_name && wcscmp(entry.short_name, L"h") == 0) continue;
 
-		if (entry.short_name) // Is option
+		if (entry.type == ArgEntry::Type::Option || entry.type == ArgEntry::Type::Flag)
 		{
 			if (entry.short_name)
 				nice_wprintf(g_conout, L" [-%ls", entry.short_name);
 			else
 				nice_wprintf(g_conout, L" [--%ls", entry.long_name);
 
-			print_option_args(entry, false);
+			if (entry.type == ArgEntry::Type::Option)
+			{
+				if (entry.long_name)
+					nice_wprintf(g_conout, L" %ls", entry.long_name);
+				else
+					nice_wprintf(g_conout, L" %ls", entry.short_name);
+			}
 
-			wprintf(L"]");
+			nice_wprintf(g_conout, L"]");
 		}
-		else // Is argument
-		{
-			print_option_args(entry, true);
-		}
+		else // Is multi argument
+			nice_wprintf(g_conout, L" <%ls...>", entry.long_name);
 	}
-	wprintf(L"\n\n");
+	nice_wprintf(g_conout, L"\n\n");
 
-	wprintf(L"Options:\n");
+	wchar_t terminal_table[64][256];
+	nice_wprintf(g_conout, L"Options:\n");
 	for (int i = 0; i < entries_count; i++)
 	{
 		const auto& entry = entries[i];
-		if (!entry.short_name) continue;
+		if (entry.type != ArgEntry::Type::Option && entry.type != ArgEntry::Type::Flag) continue;
 
-		nice_wprintf(g_conout, L"\t\x1b[1m-%ls\x1b[0m", entry.short_name);
-		print_option_args(entry, false);
+		nice_wprintf(g_conout, L"\t");
+		//swprintf(terminal_table[0], ARR_COUNT(terminal_table[0]), L"\t");
+		if (entry.short_name)
+		{
+			nice_wprintf(g_conout, L"\x1b[1m-%ls\x1b[0m", entry.short_name);
+			if (entry.type == ArgEntry::Type::Option)
+			{
+				if (entry.long_name)
+					nice_wprintf(g_conout, L" %ls", entry.long_name);
+				else
+					nice_wprintf(g_conout, L" %ls", entry.short_name);
+			}
+		}
 
 		if (entry.long_name)
 		{
-			nice_wprintf(g_conout, L", \x1b[1m--%ls\x1b[0m", entry.long_name);
-			print_option_args(entry, false);
+			if (entry.short_name)
+				nice_wprintf(g_conout, L", ");
+
+			nice_wprintf(g_conout, L"\x1b[1m--%ls\x1b[0m", entry.long_name);
+			if (entry.type == ArgEntry::Type::Option)
+			{
+				if (entry.long_name)
+					nice_wprintf(g_conout, L" %ls", entry.long_name);
+				else
+					nice_wprintf(g_conout, L" %ls", entry.short_name);
+			}
 		}
 
 		if (entry.description)
-		{
-			wprintf(L"\t(%ls)", entry.description);
-		}
+			nice_wprintf(g_conout, L"\t(%ls)", entry.description);
 
-		wprintf(L"\n");
+		nice_wprintf(g_conout, L"\n");
 	}
-	wprintf(L"\n");
+	nice_wprintf(g_conout, L"\n");
 
-
-	wprintf(L"Arguments:\n");
+	nice_wprintf(g_conout, L"Arguments:\n");
 	for (int i = 0; i < entries_count; i++)
 	{
 		const auto& entry = entries[i];
-		if (entry.short_name) continue;
+		if (entry.type != ArgEntry::Type::MultiArg) continue;
 
-		wprintf(L"\t");
+		nice_wprintf(g_conout, L"\t");
 
-		nice_wprintf(g_conout, L"\x1b[1m%ls", entry.long_name);
-		if (entry.type == ArgEntry::Type::MultiArg) wprintf(L"...");
-		wprintf(L"\x1b[0m");
+		nice_wprintf(g_conout, L"\x1b[1m%ls...\x1b[0m", entry.long_name);
 		if (entry.description)
-		{
-			wprintf(L"\t(%ls)", entry.description);
-		}
+			nice_wprintf(g_conout, L"\t(%ls)", entry.description);
 
-		wprintf(L"\n");
+		nice_wprintf(g_conout, L"\n");
 	}
 }
 
@@ -215,7 +214,7 @@ ParseArgsResult parse_args(ArgEntry* arg_entries, const int arg_entries_count, c
 		{
 			argument_missing = 1;
 			if (entry.description)
-				wprintf(L"Please specify: %ls!\n", entry.description);
+				nice_wprintf(g_conout, L"Please specify: %ls!\n", entry.description);
 		}
 	}
 

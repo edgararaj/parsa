@@ -219,7 +219,7 @@ int wmain(int argc, const wchar_t** argv)
 	ArgEntry arg_entries[] = {
 		{L"h", L"help", L"Display this message"},
 		{L"o", L"out", L"Output directory/file", ArgEntry::Type::Option, L"gen/"},
-		{0, L"path", L"Directory or file(s) to preprocess", ArgEntry::Type::MultiArg, L"*.js"},
+		{0, L"path", L"Directory or file(s) to preprocess", ArgEntry::Type::MultiArg},
 	};
 
 	const auto parse_args_result = parse_args(arg_entries, ARR_COUNT(arg_entries), argc, argv);
