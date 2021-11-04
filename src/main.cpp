@@ -29,7 +29,19 @@ HANDLE g_conout;
 struct IncludeStatement {
 	char* start_location;
 	char* end_location;
+	wchar_t file_path[64];
 	FileBuffer file_buffer;
+};
+
+struct DefineStatement {
+	char* start_location;
+	char* end_location;
+
+	char* name;
+	u64 name_count;
+
+	char* replace;
+	u64 replace_count;
 };
 
 const wchar_t* get_last_slash(const wchar_t* path)
@@ -44,76 +56,92 @@ const wchar_t* get_last_slash(const wchar_t* path)
 	return last_slash;
 }
 
-struct ProcessResult {
-	u64 out_buffer_size;
-	int includes_count;
-};
-
-const ProcessResult process_include_statements(IncludeStatement* includes, const FileBuffer& in_file_buffer)
+const u64 process_define(DefineStatement& define, const FileBuffer& in_file_buffer)
 {
-	ProcessResult result = {};
+	const auto include_statement = "#define ";
+	const auto statement_start = strstr(in_file_buffer.content, include_statement);
+	if (!statement_start) return 0;
 
-	auto prev_statement_arg_end = in_file_buffer.content;
-	auto haystack = in_file_buffer.content;
-	while (true)
+	const auto statement_end = statement_start + ARR_COUNT(include_statement) - 1;
+
+	auto statement_arg1_start = statement_end + 1;
+	for (; *statement_arg1_start == ' '; statement_arg1_start++);
+	if (!isalnum(*statement_arg1_start))
 	{
-		const auto include_statement = "#include ";
-		const auto statement_start = strstr(haystack, include_statement);
-		if (!statement_start) break;
-
-		const auto statement_end = statement_start + ARR_COUNT(include_statement) - 1;
-
-		auto statement_arg_start = statement_end + 1;
-		for (; *statement_arg_start == ' '; statement_arg_start++);
-		if (*statement_arg_start != '"')
-		{
-			wprintf(L"Can't find opening \" for statement: #include\n");
-			break;
-		}
-
-		auto statement_arg_end = statement_arg_start + 1;
-		for (; *statement_arg_end != '"' && *statement_arg_end != '\n' && *statement_arg_end; statement_arg_end++);
-		if (*statement_arg_end != '"')
-		{
-			wprintf(L"Can't find closing \" for statement: #include\n");
-			break;
-		}
-
-		auto& include = includes[result.includes_count];
-		include.start_location = statement_start;
-		include.end_location = statement_arg_end;
-
-		const auto include_file_path_size = statement_arg_end - statement_arg_start - 1;
-		if (!include_file_path_size || include_file_path_size > std::numeric_limits<int>::max()) {
-			wprintf(L"Invalid file path for statement: #include\n");
-			haystack = statement_arg_end;
-			continue;
-		}
-
-		const auto include_file_path_size_trunc = (int)include_file_path_size;
-
-		wchar_t include_file_path[64];
-		{
-			const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, include_file_path_size_trunc, include_file_path, ARR_COUNT(include_file_path));
-			include_file_path[bytes_written] = 0;
-		}
-
-		const auto include_file_buffer = read_file_to_unix_buffer(include_file_path);
-		if (!include_file_buffer.content)
-			break;
-
-		include.file_buffer = include_file_buffer;
-
-		result.out_buffer_size += (statement_start - prev_statement_arg_end) + include_file_buffer.size;
-		prev_statement_arg_end = statement_arg_end + 1;
-
-		result.includes_count++;
-		haystack = statement_arg_end;
+		wprintf(L"First argument of #define isn't alphanumeric\n");
+		return 0;
 	}
 
-	result.out_buffer_size += in_file_buffer.size - (prev_statement_arg_end - in_file_buffer.content) + 1;
+	auto statement_arg1_end = statement_arg1_start + 1;
+	for (; isalnum(*statement_arg1_end); statement_arg1_end++);
+	if (*statement_arg1_end != ' ')
+	{
+		wprintf(L"Couldn't find second argument of #include statement\n");
+		return 0;
+	}
 
-	return result;
+	auto statement_arg2_start = statement_arg1_end;
+	for (; *statement_arg2_start == ' '; statement_arg2_start++);
+	if (!isalnum(*statement_arg2_start))
+	{
+		wprintf(L"Second argument of #define isn't alphanumeric\n");
+		return 0;
+	}
+
+	auto statement_arg2_end = statement_arg2_start + 1;
+	for (; isalnum(*statement_arg2_end); statement_arg2_end++);
+
+	define.start_location = statement_start;
+	define.end_location = statement_arg2_end - 1;
+
+	define.name = statement_arg1_start;
+	define.name_count = statement_arg1_end - statement_arg1_start;
+
+	define.replace = statement_arg2_start;
+	define.replace_count = statement_arg2_end - statement_arg2_start;
+
+	return in_file_buffer.size - (statement_arg2_end - in_file_buffer.content) + (statement_start - in_file_buffer.content);
+}
+
+const u64 process_include(IncludeStatement& include, const FileBuffer& in_file_buffer)
+{
+	const auto include_statement = "#include ";
+	const auto statement_start = strstr(in_file_buffer.content, include_statement);
+	if (!statement_start) return 0;
+
+	const auto statement_end = statement_start + ARR_COUNT(include_statement) - 1;
+
+	auto statement_arg_start = statement_end + 1;
+	for (; *statement_arg_start == ' '; statement_arg_start++);
+	if (*statement_arg_start != '"')
+	{
+		wprintf(L"Can't find opening \" of #include statement\n");
+		return 0;
+	}
+
+	auto statement_arg_end = statement_arg_start + 1;
+	for (; *statement_arg_end != '"' && *statement_arg_end != '\n' && *statement_arg_end; statement_arg_end++);
+	if (*statement_arg_end != '"')
+	{
+		wprintf(L"Can't find closing \" of #include statement\n");
+		return 0;
+	}
+
+	include.start_location = statement_start;
+	include.end_location = statement_arg_end;
+
+	const auto include_file_path_size = statement_arg_end - statement_arg_start - 1;
+	if (!include_file_path_size || include_file_path_size > std::numeric_limits<int>::max()) {
+		wprintf(L"Invalid file path of #include statement\n");
+		return 0;
+	}
+
+	const auto include_file_path_size_trunc = (int)include_file_path_size;
+
+	const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, include_file_path_size_trunc, include.file_path, ARR_COUNT(include.file_path));
+	include.file_path[bytes_written] = 0;
+
+	return in_file_buffer.size - (statement_arg_end - in_file_buffer.content) + (statement_start - in_file_buffer.content);
 }
 
 const wchar_t* get_rel_path(const wchar_t* abs_path, const wchar_t* curr_dir)
@@ -329,43 +357,76 @@ int wmain(int argc, const wchar_t** argv)
 			if (!in_file_buffer.content)
 				continue;
 
-			IncludeStatement includes[64];
+			IncludeStatement include;
+			auto out_buffer_size = process_include(include, in_file_buffer);
 
-			const auto process_result = process_include_statements(includes, in_file_buffer);
+			include.file_buffer = read_file_to_unix_buffer(include.file_path);
+			out_buffer_size += include.file_buffer.size;
 
-			const auto out_buffer = (char*)VirtualAlloc(0, process_result.out_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-			if (!out_buffer)
+			char* out_buffer;
 			{
-				wprintf(L"Failed to allocate memory!\n");
-				continue;
+				out_buffer = (char*)VirtualAlloc(0, out_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+				if (!out_buffer)
+				{
+					wprintf(L"Failed to allocate memory!\n");
+					continue;
+				}
+
+				auto out_buffer_end = out_buffer;
+				auto in_file_buffer_cursor = in_file_buffer.content;
+
+				{
+					const auto size = include.start_location - in_file_buffer_cursor;
+					memcpy(out_buffer_end, in_file_buffer_cursor, size);
+					in_file_buffer_cursor = include.end_location + 1;
+					out_buffer_end += size;
+
+					memcpy(out_buffer_end, include.file_buffer.content, include.file_buffer.size);
+					VirtualFree(include.file_buffer.content, include.file_buffer.size, MEM_RELEASE);
+					out_buffer_end += include.file_buffer.size;
+				}
+
+				{
+					const auto size = in_file_buffer.size - (in_file_buffer_cursor - in_file_buffer.content);
+					memcpy(out_buffer_end, in_file_buffer_cursor, size);
+				}
 			}
 
-			auto out_buffer_end = out_buffer;
-			auto in_file_buffer_cursor = in_file_buffer.content;
-			for (int i = 0; i < process_result.includes_count; i++)
-			{
-				const auto& include = includes[i];
-				const auto size = include.start_location - in_file_buffer_cursor;
-				memcpy(out_buffer_end, in_file_buffer_cursor, size);
-				in_file_buffer_cursor = include.end_location + 1;
-				out_buffer_end += size;
+			DefineStatement define;
+			FileBuffer in_file_buffer2 = {out_buffer, out_buffer_size - 1};
+			auto out_buffer_size2 = process_define(define, in_file_buffer2);
 
-				memcpy(out_buffer_end, include.file_buffer.content, include.file_buffer.size);
-				VirtualFree(include.file_buffer.content, include.file_buffer.size, MEM_RELEASE);
-				out_buffer_end += include.file_buffer.size;
-			}
-
+			char* out_buffer2;
 			{
-				const auto size = in_file_buffer.size - (in_file_buffer_cursor - in_file_buffer.content);
-				memcpy(out_buffer_end, in_file_buffer_cursor, size);
-				out_buffer_end += size;
-				*out_buffer_end = '\n';
+				out_buffer2 = (char*)VirtualAlloc(0, out_buffer_size2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+				if (!out_buffer2)
+				{
+					wprintf(L"Failed to allocate memory!\n");
+					continue;
+				}
+
+				auto out_buffer_end = out_buffer2;
+				auto in_file_buffer_cursor = in_file_buffer2.content;
+
+				{
+					const auto size = define.start_location - in_file_buffer_cursor;
+					memcpy(out_buffer_end, in_file_buffer_cursor, size);
+					in_file_buffer_cursor = define.end_location + 1;
+					out_buffer_end += size;
+				}
+
+				{
+					const auto size = in_file_buffer2.size - (in_file_buffer_cursor - in_file_buffer2.content);
+					memcpy(out_buffer_end, in_file_buffer_cursor, size);
+					out_buffer_end += size;
+					*out_buffer_end = '\n';
+				}
 			}
 
 			const auto out_file_handle = create_wo_file(out_file_path);
 			if (!out_file_handle) continue;
 
-			if (!write_file(out_file_handle, out_file_path, out_buffer, process_result.out_buffer_size))
+			if (!write_file(out_file_handle, out_file_path, out_buffer2, out_buffer_size2))
 				continue;
 
 		}
