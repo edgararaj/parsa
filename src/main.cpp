@@ -24,7 +24,7 @@ typedef uint64_t u64;
 HANDLE g_conout;
 
 #include "args_parser.cpp"
-#include "file_ults.cpp"
+#include "file_utils.cpp"
 
 struct IncludeStatement {
 	char* start_location;
@@ -357,90 +357,96 @@ int wmain(int argc, const wchar_t** argv)
 			if (!in_file_buffer.content)
 				continue;
 
-			IncludeStatement include;
-			auto out_buffer_size = process_include(include, in_file_buffer);
-
-			wchar_t include_file_path[64];
-			// generate include_file_path {{{
-			if (wcslcpy(include_file_path, in_path_dir, ARR_COUNT(include_file_path)) >= ARR_COUNT(include_file_path))
+			FileBuffer out_file_buffer = in_file_buffer;
+			while (true)
 			{
-				wprintf(L"File path is too large!\n");
-				continue;
-			}
-			if (wcslcat(include_file_path, include.file_path, ARR_COUNT(include_file_path)) >= ARR_COUNT(include_file_path))
-			{
-				wprintf(L"File path is too large!\n");
-				continue;
-			}
-			// }}}
-
-			include.file_buffer = read_file_to_unix_buffer(include_file_path);
-			out_buffer_size += include.file_buffer.size;
-
-			char* out_buffer;
-			{
-				out_buffer = (char*)VirtualAlloc(0, out_buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-				if (!out_buffer)
-				{
-					wprintf(L"Failed to allocate memory!\n");
-					continue;
-				}
-
-				auto out_buffer_end = out_buffer;
-				auto in_file_buffer_cursor = in_file_buffer.content;
+				FileBuffer in_file_buffer2 = out_file_buffer;
 
 				{
-					const auto size = include.start_location - in_file_buffer_cursor;
-					memcpy(out_buffer_end, in_file_buffer_cursor, size);
-					in_file_buffer_cursor = include.end_location + 1;
-					out_buffer_end += size;
+					IncludeStatement include;
+					const auto size1 = process_include(include, out_file_buffer);
+					if (!size1) break;
+					in_file_buffer2.size = size1;
 
-					memcpy(out_buffer_end, include.file_buffer.content, include.file_buffer.size);
-					VirtualFree(include.file_buffer.content, include.file_buffer.size, MEM_RELEASE);
-					out_buffer_end += include.file_buffer.size;
-				}
+					wchar_t include_file_path[64];
+					// generate include_file_path {{{
+					if (wcslcpy(include_file_path, in_path_dir, ARR_COUNT(include_file_path)) >= ARR_COUNT(include_file_path))
+					{
+						wprintf(L"File path is too large!\n");
+						continue;
+					}
+					if (wcslcat(include_file_path, include.file_path, ARR_COUNT(include_file_path)) >= ARR_COUNT(include_file_path))
+					{
+						wprintf(L"File path is too large!\n");
+						continue;
+					}
+					// }}}
 
-				{
-					const auto size = in_file_buffer.size - (in_file_buffer_cursor - in_file_buffer.content);
-					memcpy(out_buffer_end, in_file_buffer_cursor, size);
-				}
-			}
+					include.file_buffer = read_file_to_unix_buffer(include_file_path);
+					in_file_buffer2.size += include.file_buffer.size;
 
-			DefineStatement define;
-			FileBuffer in_file_buffer2 = {out_buffer, out_buffer_size - 1};
-			auto out_buffer_size2 = process_define(define, in_file_buffer2);
+					in_file_buffer2.content = (char*)VirtualAlloc(0, in_file_buffer2.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+					if (!in_file_buffer2.content)
+					{
+						wprintf(L"Failed to allocate memory!\n");
+						continue;
+					}
 
-			char* out_buffer2;
-			{
-				out_buffer2 = (char*)VirtualAlloc(0, out_buffer_size2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-				if (!out_buffer2)
-				{
-					wprintf(L"Failed to allocate memory!\n");
-					continue;
-				}
+					auto out_file_buffer_end = in_file_buffer2.content;
+					auto in_file_buffer_cursor = out_file_buffer.content;
 
-				auto out_buffer_end = out_buffer2;
-				auto in_file_buffer_cursor = in_file_buffer2.content;
+					{
+						const auto size = include.start_location - in_file_buffer_cursor;
+						memcpy(out_file_buffer_end, in_file_buffer_cursor, size);
+						in_file_buffer_cursor = include.end_location + 1;
+						out_file_buffer_end += size;
 
-				{
-					const auto size = define.start_location - in_file_buffer_cursor;
-					memcpy(out_buffer_end, in_file_buffer_cursor, size);
-					in_file_buffer_cursor = define.end_location + 1;
-					out_buffer_end += size;
+						memcpy(out_file_buffer_end, include.file_buffer.content, include.file_buffer.size);
+						VirtualFree(include.file_buffer.content, include.file_buffer.size, MEM_RELEASE);
+						out_file_buffer_end += include.file_buffer.size;
+					}
+
+					{
+						const auto size = out_file_buffer.size - (in_file_buffer_cursor - out_file_buffer.content);
+						memcpy(out_file_buffer_end, in_file_buffer_cursor, size);
+					}
 				}
 
 				{
-					const auto size = in_file_buffer2.size - (in_file_buffer_cursor - in_file_buffer2.content);
-					memcpy(out_buffer_end, in_file_buffer_cursor, size);
-					out_buffer_end += size;
-					*out_buffer_end = '\n';
+					DefineStatement define;
+					out_file_buffer = in_file_buffer2;
+					const auto size1 = process_define(define, in_file_buffer2);
+					if (!size1) break;
+					out_file_buffer.size = size1;
+
+					out_file_buffer.content = (char*)VirtualAlloc(0, out_file_buffer.size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+					if (!out_file_buffer.content)
+					{
+						wprintf(L"Failed to allocate memory!\n");
+						continue;
+					}
+
+					auto out_file_buffer_end = out_file_buffer.content;
+					auto in_file_buffer_cursor = in_file_buffer2.content;
+
+					{
+						const auto size = define.start_location - in_file_buffer_cursor;
+						memcpy(out_file_buffer_end, in_file_buffer_cursor, size);
+						in_file_buffer_cursor = define.end_location + 1;
+						out_file_buffer_end += size;
+					}
+
+					{
+						const auto size = in_file_buffer2.size - (in_file_buffer_cursor - in_file_buffer2.content);
+						memcpy(out_file_buffer_end, in_file_buffer_cursor, size);
+					}
 				}
 			}
 
 			const auto out_file_handle = create_wo_file(out_file_path);
 			if (!out_file_handle) continue;
 
-			if (!write_file(out_file_handle, out_file_path, out_buffer2, out_buffer_size2))
+			if (!write_file(out_file_handle, out_file_path, out_file_buffer))
 				continue;
 
 		}

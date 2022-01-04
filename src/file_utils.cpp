@@ -29,16 +29,16 @@ HANDLE create_wo_file(const wchar_t* file_path)
 	return file_handle;
 }
 
-bool write_file(const HANDLE file_handle, const wchar_t* file_path, const void* buffer, const u64 buffer_size)
+bool write_file(const HANDLE file_handle, const wchar_t* file_path, const FileBuffer& file_buffer)
 {
-	auto file_size_to_write = buffer_size;
+	auto file_size_to_write = file_buffer.size;
 	while (true)
 	{
 		const auto max_dword_value = std::numeric_limits<DWORD>::max();
 		const auto to_write = (DWORD)(file_size_to_write > max_dword_value ? max_dword_value : file_size_to_write);
 
 		DWORD bytes_written;
-		const auto ret = WriteFile(file_handle, buffer, to_write, &bytes_written, 0);
+		const auto ret = WriteFile(file_handle, file_buffer.content, to_write, &bytes_written, 0);
 		if (!ret)
 		{
 			nice_wprintf(g_conout, L"Failed to write to file \"%ls\"!\n", file_path);
