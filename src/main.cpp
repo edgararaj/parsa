@@ -360,7 +360,21 @@ int wmain(int argc, const wchar_t** argv)
 			IncludeStatement include;
 			auto out_buffer_size = process_include(include, in_file_buffer);
 
-			include.file_buffer = read_file_to_unix_buffer(include.file_path);
+			wchar_t include_file_path[64];
+			// generate include_file_path {{{
+			if (wcslcpy(include_file_path, in_path_dir, ARR_COUNT(include_file_path)) >= ARR_COUNT(include_file_path))
+			{
+				wprintf(L"File path is too large!\n");
+				continue;
+			}
+			if (wcslcat(include_file_path, include.file_path, ARR_COUNT(include_file_path)) >= ARR_COUNT(include_file_path))
+			{
+				wprintf(L"File path is too large!\n");
+				continue;
+			}
+			// }}}
+
+			include.file_buffer = read_file_to_unix_buffer(include_file_path);
 			out_buffer_size += include.file_buffer.size;
 
 			char* out_buffer;
