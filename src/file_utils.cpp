@@ -1,11 +1,6 @@
-struct FileBuffer {
-	char* content;
-	u64 size;
-};
-
 struct FileView {
 	const HANDLE handle;
-	const FileBuffer buffer;
+	const Buffer buffer;
 };
 
 HANDLE create_wo_file(const wchar_t* file_path)
@@ -29,7 +24,7 @@ HANDLE create_wo_file(const wchar_t* file_path)
 	return file_handle;
 }
 
-bool write_file(const HANDLE file_handle, const wchar_t* file_path, const FileBuffer& file_buffer)
+bool write_file(const HANDLE file_handle, const wchar_t* file_path, const Buffer& file_buffer)
 {
 	auto file_size_to_write = file_buffer.size;
 	while (true)
@@ -88,7 +83,7 @@ u64 get_file_size(const HANDLE file_handle)
 
 const FileView create_ro_file_view(const wchar_t* file_path)
 {
-	FileBuffer buffer = {};
+	Buffer buffer = {};
 	FileView result = {.buffer = buffer};
 
 	const auto file_handle = open_ro_file(file_path);
@@ -212,7 +207,7 @@ u64 read_file_view_to_unix_buffer(char* out_buffer, const FileView file_view, co
 #endif
 }
 
-const FileBuffer read_file_to_unix_buffer(const wchar_t* file_path)
+const Buffer read_file_to_unix_buffer(const wchar_t* file_path)
 {
 	const auto file_view = create_ro_file_view(file_path);
 	if (!file_view.buffer.content)
