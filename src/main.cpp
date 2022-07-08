@@ -24,6 +24,11 @@ typedef uint64_t u64;
 
 HANDLE g_conout;
 
+struct Buffer {
+	char* content;
+	u64 size;
+};
+
 #include "args_parser.cpp"
 #include "file_utils.cpp"
 
@@ -31,18 +36,14 @@ struct IncludeStatement {
 	char* start_location;
 	char* end_location;
 	wchar_t file_path[64];
-	FileBuffer file_buffer;
+	Buffer file_buffer;
 };
 
 struct DefineStatement {
 	char* start_location;
 	char* end_location;
-
-	char* name;
-	u64 name_count;
-
-	char* replace;
-	u64 replace_count;
+	Buffer token;
+	Buffer replace;
 };
 
 const wchar_t* get_last_slash(const wchar_t* path)
@@ -57,13 +58,13 @@ const wchar_t* get_last_slash(const wchar_t* path)
 	return last_slash;
 }
 
-const u64 process_define(DefineStatement& define, const FileBuffer& in_file_buffer)
+const u64 process_define(DefineStatement& define, const Buffer& in_file_buffer)
 {
-	const auto include_statement = "#define ";
-	const auto statement_start = strstr(in_file_buffer.content, include_statement);
+	const auto statement = "#define ";
+	const auto statement_start = strstr(in_file_buffer.content, statement);
 	if (!statement_start) return 0;
 
-	const auto statement_end = statement_start + ARR_COUNT(include_statement) - 1;
+	const auto statement_end = statement_start + ARR_COUNT(statement) - 1;
 
 	auto statement_arg1_start = statement_end + 1;
 	for (; *statement_arg1_start == ' '; statement_arg1_start++);
@@ -95,22 +96,19 @@ const u64 process_define(DefineStatement& define, const FileBuffer& in_file_buff
 	define.start_location = statement_start;
 	define.end_location = statement_arg2_end - 1;
 
-	define.name = statement_arg1_start;
-	define.name_count = statement_arg1_end - statement_arg1_start;
-
-	define.replace = statement_arg2_start;
-	define.replace_count = statement_arg2_end - statement_arg2_start;
+	define.token = {statement_arg1_start, (u64)(statement_arg1_end - statement_arg1_start)};
+	define.replace = {statement_arg2_start, (u64)(statement_arg2_end - statement_arg2_start)};
 
 	return in_file_buffer.size - (statement_arg2_end - in_file_buffer.content) + (statement_start - in_file_buffer.content);
 }
 
-const u64 process_include(IncludeStatement& include, const FileBuffer& in_file_buffer)
+const u64 process_include(IncludeStatement& include, const Buffer& in_file_buffer)
 {
-	const auto include_statement = "#include ";
-	const auto statement_start = strstr(in_file_buffer.content, include_statement);
+	const auto statement = "#include ";
+	const auto statement_start = strstr(in_file_buffer.content, statement);
 	if (!statement_start) return 0;
 
-	const auto statement_end = statement_start + ARR_COUNT(include_statement) - 1;
+	const auto statement_end = statement_start + ARR_COUNT(statement) - 1;
 
 	auto statement_arg_start = statement_end + 1;
 	for (; *statement_arg_start == ' '; statement_arg_start++);
@@ -392,10 +390,10 @@ int wmain(int argc, const wchar_t** argv)
 			if (!in_file_buffer.content)
 				continue;
 
-			FileBuffer out_file_buffer = in_file_buffer;
+			Buffer out_file_buffer = in_file_buffer;
 			while (true)
 			{
-				FileBuffer in_file_buffer2 = out_file_buffer;
+				Buffer in_file_buffer2 = out_file_buffer;
 
 				{
 					IncludeStatement include;
@@ -464,6 +462,7 @@ int wmain(int argc, const wchar_t** argv)
 					auto out_file_buffer_end = out_file_buffer.content;
 					auto in_file_buffer_cursor = in_file_buffer2.content;
 
+					while (true)
 					{
 						const auto size = define.start_location - in_file_buffer_cursor;
 						memcpy(out_file_buffer_end, in_file_buffer_cursor, size);
