@@ -1,4 +1,2 @@
-.vs/
-build_debug/
-build_release/
+build_*/
 test_files/

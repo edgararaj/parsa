@@ -1,0 +1,48 @@
+prj_name = "parsa"
+
+def compile():
+    try:
+        """bat
+            cl {exe_compiler_flags} {src_dir}/main.cpp -Fe{prj_name} -Fm{prj_name} -link {common_linker_flags}
+        """
+    except: pass
+    return not error_code
+
+src_dir = f"{script_dir}/src/"
+if "debug" in argv:
+    build_dir = f"{script_dir}/build_debug/"
+    print("Building debug version...")
+else:
+    build_dir = f"{script_dir}/build_release/"
+
+common_compiler_flags = f"-nologo -GR- -EHa- -Gm- -Oi -WX -W4 -wd4100 -wd4201 -wd4189 -wd4701 -std:c++latest -utf-8 -D_CRT_SECURE_NO_WARNINGS"
+# gdiplus is shit
+#common_compiler_flags += f" -wd4458"
+
+if "debug" in argv:
+    common_compiler_flags += " -Od -Zi -DDEBUG"
+    exe_compiler_flags = common_compiler_flags + " -MTd"
+    dll_compiler_flags = common_compiler_flags + " -LDd"
+else:
+    common_compiler_flags += " -O2 -MT"
+    exe_compiler_flags = common_compiler_flags + " -MT"
+    dll_compiler_flags = common_compiler_flags + " -LD"
+
+common_linker_flags = f"-opt:ref -incremental:no -subsystem:console"
+
+if exists(build_dir):
+    if not rm(build_dir):
+        exit(1)
+
+if not exists(build_dir):
+    mkdir(build_dir)
+
+    with cd(build_dir):
+        if not compile():
+            print_error("Failed to compile!")
+        else:
+            print_success("Compiled sucessfully")
+            if "run" in argv:
+                """bat
+                    {build_dir}/{prj_name}.exe
+                """

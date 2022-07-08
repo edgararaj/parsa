@@ -23,7 +23,7 @@ if "%1" == "debug" (
 	set CommonCompilerFlags=%CommonCompilerFlags% -O2
 )
 
-set CommonLinkerFlags=-opt:ref -incremental:no -subsystem:console -nodefaultlib kernel32.lib libucrt.lib libvcruntime.lib libcmt.lib
+set CommonLinkerFlags=-opt:ref -incremental:no -subsystem:console -nodefaultlib kernel32.lib libucrt.lib libvcruntime.lib libcmt.lib shlwapi.lib
 
 if exist %BuildDir% (
 	rd /s/q %BuildDir% 2> NUL

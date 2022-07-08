@@ -18,6 +18,7 @@ typedef uint64_t u64;
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <Shlwapi.h>
 
 #include "nice_wprintf.cpp"
 
@@ -223,6 +224,25 @@ bool get_path_dir(wchar_t* dest, size_t dest_count, const wchar_t* src)
 	return 1;
 }
 
+bool get_parent_path_dir(wchar_t* dest, size_t dest_count, const wchar_t* src)
+{
+	const auto src_last_slash = get_last_slash(src);
+	if (src_last_slash)
+	{
+		const size_t size = src_last_slash - src;
+		if (size >= dest_count)
+		{
+			wprintf(L"File path is too large!\n");
+			return 0;
+		}
+		wcslcpy(dest, src, size+1);
+	}
+	else
+		dest[0] = 0;
+
+	return 1;
+}
+
 int wmain(int argc, const wchar_t** argv)
 {
 	// Enable conhost ascii escape sequences
@@ -289,6 +309,21 @@ int wmain(int argc, const wchar_t** argv)
 	wchar_t out_path_dir[64];
 	if (!get_path_dir(out_path_dir, ARR_COUNT(out_path_dir), out_path))
 		return 1;
+
+	if (!PathFileExistsW(out_path_dir))
+	{
+		nice_wprintf(g_conout, L"Output directory \"%ls\" doesn't exist!\n", out_path_dir);
+		wchar_t create_out_path_dir[64];
+		memcpy(create_out_path_dir, out_path_dir, sizeof(out_path_dir));
+		while (true)
+		{
+			nice_wprintf(g_conout, L"Creating directory \"%ls\"...\n", create_out_path_dir);
+			if (CreateDirectoryW(create_out_path_dir, 0) != ERROR_PATH_NOT_FOUND)
+				break;
+			if (!get_parent_path_dir(create_out_path_dir, ARR_COUNT(create_out_path_dir), create_out_path_dir))
+				break;
+		}
+	}
 
 	{
 		WIN32_FIND_DATAW ffd;
