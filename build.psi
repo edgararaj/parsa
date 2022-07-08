@@ -1,34 +1,48 @@
 prj_name = "parsa"
 
 def compile():
+    test_main = f"{src_dir}/test/test_main.cpp" if test else ""
     try:
         """bat
-            cl {exe_compiler_flags} {src_dir}/main.cpp -Fe{prj_name} -Fm{prj_name} -link {common_linker_flags}
+            cl {exe_compiler_flags} {test_main} {src_dir}/main.cpp -Fe{prj_name} -Fm{prj_name} -link {common_linker_flags}
         """
     except: pass
     return not error_code
 
+debug = "debug" in argv or "test" in argv
+test = "test" in argv
+
 src_dir = f"{script_dir}/src/"
-if "debug" in argv:
+if debug:
     build_dir = f"{script_dir}/build_debug/"
-    print("Building debug version...")
 else:
     build_dir = f"{script_dir}/build_release/"
+
+if debug and test:
+    print("Building debug & test version...")
+elif debug:
+    print("Building debug version...")
 
 common_compiler_flags = f"-nologo -GR- -EHa- -Gm- -Oi -WX -W4 -wd4100 -wd4201 -wd4189 -wd4701 -std:c++latest -utf-8 -D_CRT_SECURE_NO_WARNINGS"
 # gdiplus is shit
 #common_compiler_flags += f" -wd4458"
 
-if "debug" in argv:
+if debug:
     common_compiler_flags += " -Od -Zi -DDEBUG"
+else:
+    common_compiler_flags += " -O2 -MT"
+
+if test:
+    common_compiler_flags += " -DTEST"
+
+if debug:
     exe_compiler_flags = common_compiler_flags + " -MTd"
     dll_compiler_flags = common_compiler_flags + " -LDd"
 else:
-    common_compiler_flags += " -O2 -MT"
     exe_compiler_flags = common_compiler_flags + " -MT"
     dll_compiler_flags = common_compiler_flags + " -LD"
 
-common_linker_flags = f"-opt:ref -incremental:no -subsystem:console"
+common_linker_flags = f"-opt:ref -incremental:no -subsystem:console shlwapi.lib"
 
 if exists(build_dir):
     if not rm(build_dir):

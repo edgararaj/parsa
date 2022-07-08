@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.psi": "python",
+        "xtr1common": "cpp"
+    }
+}

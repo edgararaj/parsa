@@ -1,5 +1,3 @@
-#define _CRT_SECURE_NO_WARNINGS
-
 #include <stdio.h>
 #include <stdint.h>
 #include <limits>
@@ -13,11 +11,9 @@
 typedef int64_t i64;
 typedef uint64_t u64;
 
-#define ARR_COUNT(x) (sizeof(x)/sizeof(x[0]))
+#include "utils.h"
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
+#include "windows_framework.h"
 #include <Shlwapi.h>
 
 #include "nice_wprintf.cpp"
@@ -64,7 +60,7 @@ const u64 process_define(DefineStatement& define, const Buffer& in_file_buffer)
 	const auto statement_start = strstr(in_file_buffer.content, statement);
 	if (!statement_start) return 0;
 
-	const auto statement_end = statement_start + ARR_COUNT(statement) - 1;
+	const auto statement_end = statement_start + COUNTOF(statement) - 1;
 
 	auto statement_arg1_start = statement_end + 1;
 	for (; *statement_arg1_start == ' '; statement_arg1_start++);
@@ -108,7 +104,7 @@ const u64 process_include(IncludeStatement& include, const Buffer& in_file_buffe
 	const auto statement_start = strstr(in_file_buffer.content, statement);
 	if (!statement_start) return 0;
 
-	const auto statement_end = statement_start + ARR_COUNT(statement) - 1;
+	const auto statement_end = statement_start + COUNTOF(statement) - 1;
 
 	auto statement_arg_start = statement_end + 1;
 	for (; *statement_arg_start == ' '; statement_arg_start++);
@@ -137,7 +133,7 @@ const u64 process_include(IncludeStatement& include, const Buffer& in_file_buffe
 
 	const auto include_file_path_size_trunc = (int)include_file_path_size;
 
-	const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, include_file_path_size_trunc, include.file_path, ARR_COUNT(include.file_path));
+	const auto bytes_written = MultiByteToWideChar(CP_UTF8, 0, statement_arg_start+1, include_file_path_size_trunc, include.file_path, COUNTOF(include.file_path));
 	include.file_path[bytes_written] = 0;
 
 	return in_file_buffer.size - (statement_arg_end - in_file_buffer.content) + (statement_start - in_file_buffer.content);
@@ -166,18 +162,18 @@ CanonicalSelectorResult get_canonical_selector(wchar_t* dest, const size_t dest_
 
 	wchar_t* abs_path_file_part;
 	wchar_t abs_path[64];
-	const auto abs_path_written = GetFullPathNameW(src, ARR_COUNT(abs_path), abs_path, &abs_path_file_part);
-	if (!abs_path_written || abs_path_written > ARR_COUNT(abs_path))
+	const auto abs_path_written = GetFullPathNameW(src, COUNTOF(abs_path), abs_path, &abs_path_file_part);
+	if (!abs_path_written || abs_path_written > COUNTOF(abs_path))
 		return file_too_large_error();
 
 	//if (dest_count > std::numeric_limits<DWORD>::max()) return CanonicalSelectorResult::None;
 
 	wchar_t current_dir[64];
-	const auto current_dir_result = GetCurrentDirectoryW(ARR_COUNT(current_dir), current_dir);
-	if (!current_dir_result || current_dir_result > ARR_COUNT(current_dir))
+	const auto current_dir_result = GetCurrentDirectoryW(COUNTOF(current_dir), current_dir);
+	if (!current_dir_result || current_dir_result > COUNTOF(current_dir))
 		return file_too_large_error();
 
-	if (wcslcat(current_dir, L"\\", ARR_COUNT(current_dir)) >= ARR_COUNT(current_dir))
+	if (wcslcat(current_dir, L"\\", COUNTOF(current_dir)) >= COUNTOF(current_dir))
 		return file_too_large_error();
 
 	const auto rel_path = get_rel_path(abs_path, current_dir);
@@ -241,7 +237,13 @@ bool get_parent_path_dir(wchar_t* dest, size_t dest_count, const wchar_t* src)
 	return 1;
 }
 
-int wmain(int argc, const wchar_t** argv)
+#ifdef TEST
+#define MAIN entry
+#else
+#define MAIN wmain
+#endif
+
+int MAIN(int argc, const wchar_t** argv)
 {
 	// Enable conhost ascii escape sequences
 	g_conout = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -253,45 +255,45 @@ int wmain(int argc, const wchar_t** argv)
 
 	ArgEntry arg_entries[] = {
 		{L"h", L"help", L"Display this message"},
-		{L"o", L"out", L"Output directory/file", ArgEntry::Type::Option, L"gen/"},
-		{0, L"path", L"Directory or file(s) to preprocess", ArgEntry::Type::MultiArg},
+		{L"o", L"out", L"Output directory/file", 1, L"gen/"},
+		{0, L"path", L"Directory or file(s) to preprocess", -1},
 	};
 
-	const auto parse_args_result = parse_args(arg_entries, ARR_COUNT(arg_entries), argc, argv);
+	const auto parse_args_result = parse_args(arg_entries, COUNTOF(arg_entries), argc, argv, L"parsa");
 	if (parse_args_result == ParseArgsResult::Error)
 		return 1;
 	else if (parse_args_result == ParseArgsResult::Help)
 		return 0;
 
-#ifdef PARSA_DEBUG
+#ifdef DEBUG
 	wprintf(L"--------ARGS--------\n");
-	for (int i = 0; i < ARR_COUNT(arg_entries); i++)
+	for (int i = 0; i < COUNTOF(arg_entries); i++)
 	{
-		nice_wprintf(g_conout, L"--%ls: ", arg_entries[i].long_name);
+		nice_wprintf(L"--%ls: ", arg_entries[i].long_name);
 		auto value = arg_entries[i].value;
 		int j = 0;
 		for (; j < arg_entries[i].value_count; j++)
 		{
-			nice_wprintf(g_conout, L"%ls ", value);
+			nice_wprintf(L"%ls ", value);
 			for (; *value; value++) {}
 			value++;
 		}
 		if (!j && value)
-			nice_wprintf(g_conout, L"<%ls>", arg_entries[i].value);
+			nice_wprintf(L"<%ls>", arg_entries[i].value);
 
-		nice_wprintf(g_conout, L"\n");
+		nice_wprintf(L"\n");
 	}
 	wprintf(L"--------------------\n\n");
 #endif
 
-	const auto in_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"path");
+	const auto in_path_arg = get_arg_entry_value(arg_entries, COUNTOF(arg_entries), L"path");
 	wchar_t in_path[64];
-	const auto in_canonical_selector_result = get_canonical_selector(in_path, ARR_COUNT(in_path), in_path_arg, 1);
+	const auto in_canonical_selector_result = get_canonical_selector(in_path, COUNTOF(in_path), in_path_arg, 1);
 	if (in_canonical_selector_result == CanonicalSelectorResult::None) return 1;
 
-	const auto out_path_arg = get_arg_entry_value(arg_entries, ARR_COUNT(arg_entries), L"out");
+	const auto out_path_arg = get_arg_entry_value(arg_entries, COUNTOF(arg_entries), L"out");
 	wchar_t out_path[64];
-	const auto out_canonical_selector_result = get_canonical_selector(out_path, ARR_COUNT(out_path), out_path_arg, 0);
+	const auto out_canonical_selector_result = get_canonical_selector(out_path, COUNTOF(out_path), out_path_arg, 0);
 	if (out_canonical_selector_result == CanonicalSelectorResult::None) return 1;
 
 	if (in_canonical_selector_result >= CanonicalSelectorResult::Directory && out_canonical_selector_result == CanonicalSelectorResult::File)
@@ -301,24 +303,24 @@ int wmain(int argc, const wchar_t** argv)
 	}
 
 	wchar_t in_path_dir[64];
-	if (!get_path_dir(in_path_dir, ARR_COUNT(in_path_dir), in_path))
+	if (!get_path_dir(in_path_dir, COUNTOF(in_path_dir), in_path))
 		return 1;
 
 	wchar_t out_path_dir[64];
-	if (!get_path_dir(out_path_dir, ARR_COUNT(out_path_dir), out_path))
+	if (!get_path_dir(out_path_dir, COUNTOF(out_path_dir), out_path))
 		return 1;
 
 	if (!PathFileExistsW(out_path_dir))
 	{
-		nice_wprintf(g_conout, L"Output directory \"%ls\" doesn't exist!\n", out_path_dir);
+		nice_wprintf(L"Output directory \"%ls\" doesn't exist!\n", out_path_dir);
 		wchar_t create_out_path_dir[64];
 		memcpy(create_out_path_dir, out_path_dir, sizeof(out_path_dir));
 		while (true)
 		{
-			nice_wprintf(g_conout, L"Creating directory \"%ls\"...\n", create_out_path_dir);
+			nice_wprintf(L"Creating directory \"%ls\"...\n", create_out_path_dir);
 			if (CreateDirectoryW(create_out_path_dir, 0) != ERROR_PATH_NOT_FOUND)
 				break;
-			if (!get_parent_path_dir(create_out_path_dir, ARR_COUNT(create_out_path_dir), create_out_path_dir))
+			if (!get_parent_path_dir(create_out_path_dir, COUNTOF(create_out_path_dir), create_out_path_dir))
 				break;
 		}
 	}
@@ -330,10 +332,10 @@ int wmain(int argc, const wchar_t** argv)
 			switch (in_canonical_selector_result)
 			{
 				case CanonicalSelectorResult::File:
-					nice_wprintf(g_conout, L"File \"%ls\" not found!\n", in_path);
+					nice_wprintf(L"File \"%ls\" not found!\n", in_path);
 					break;
 				case CanonicalSelectorResult::Files:
-					nice_wprintf(g_conout, L"No matching files found for \"%ls\"!\n", in_path);
+					nice_wprintf(L"No matching files found for \"%ls\"!\n", in_path);
 					break;
 			}
 			return 1;
@@ -347,12 +349,12 @@ int wmain(int argc, const wchar_t** argv)
 			const auto in_file_name = ffd.cFileName;
 			wchar_t in_file_path[64];
 			// generate in_file_path {{{
-			if (wcslcpy(in_file_path, in_path_dir, ARR_COUNT(in_file_path)) >= ARR_COUNT(in_file_path))
+			if (wcslcpy(in_file_path, in_path_dir, COUNTOF(in_file_path)) >= COUNTOF(in_file_path))
 			{
 				wprintf(L"File path is too large!\n");
 				continue;
 			}
-			if (wcslcat(in_file_path, in_file_name, ARR_COUNT(in_file_path)) >= ARR_COUNT(in_file_path))
+			if (wcslcat(in_file_path, in_file_name, COUNTOF(in_file_path)) >= COUNTOF(in_file_path))
 			{
 				wprintf(L"File path is too large!\n");
 				continue;
@@ -363,12 +365,12 @@ int wmain(int argc, const wchar_t** argv)
 			// generate out_file_path {{{
 			if (out_canonical_selector_result >= CanonicalSelectorResult::Directory)
 			{
-				if (wcslcpy(out_file_path, out_path_dir, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
+				if (wcslcpy(out_file_path, out_path_dir, COUNTOF(out_file_path)) >= COUNTOF(out_file_path))
 				{
 					wprintf(L"File path is too large!\n");
 					continue;
 				}
-				if (wcslcat(out_file_path, in_file_name, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
+				if (wcslcat(out_file_path, in_file_name, COUNTOF(out_file_path)) >= COUNTOF(out_file_path))
 				{
 					wprintf(L"File path is too large!\n");
 					continue;
@@ -376,7 +378,7 @@ int wmain(int argc, const wchar_t** argv)
 			}
 			else
 			{
-				if (wcslcpy(out_file_path, out_path, ARR_COUNT(out_file_path)) >= ARR_COUNT(out_file_path))
+				if (wcslcpy(out_file_path, out_path, COUNTOF(out_file_path)) >= COUNTOF(out_file_path))
 				{
 					wprintf(L"File path is too large!\n");
 					continue;
@@ -384,7 +386,7 @@ int wmain(int argc, const wchar_t** argv)
 			}
 			// }}}
 
-			nice_wprintf(g_conout, L"Processing file \"%ls\"...\n", in_file_path);
+			nice_wprintf(L"Processing file \"%ls\"...\n", in_file_path);
 
 			const auto in_file_buffer = read_file_to_unix_buffer(in_file_path);
 			if (!in_file_buffer.content)
@@ -403,12 +405,12 @@ int wmain(int argc, const wchar_t** argv)
 
 					wchar_t include_file_path[64];
 					// generate include_file_path {{{
-					if (wcslcpy(include_file_path, in_path_dir, ARR_COUNT(include_file_path)) >= ARR_COUNT(include_file_path))
+					if (wcslcpy(include_file_path, in_path_dir, COUNTOF(include_file_path)) >= COUNTOF(include_file_path))
 					{
 						wprintf(L"File path is too large!\n");
 						continue;
 					}
-					if (wcslcat(include_file_path, include.file_path, ARR_COUNT(include_file_path)) >= ARR_COUNT(include_file_path))
+					if (wcslcat(include_file_path, include.file_path, COUNTOF(include_file_path)) >= COUNTOF(include_file_path))
 					{
 						wprintf(L"File path is too large!\n");
 						continue;
@@ -489,7 +491,7 @@ int wmain(int argc, const wchar_t** argv)
 		FindClose(search_handle);
 
 		if (in_canonical_selector_result == CanonicalSelectorResult::Directory && items_found == 2)
-			nice_wprintf(g_conout, L"Directory \"%ls\" is empty!\n", in_path_dir);
+			nice_wprintf(L"Directory \"%ls\" is empty!\n", in_path_dir);
 
 		const auto error = GetLastError();
 		if (ERROR_NO_MORE_FILES != error)
