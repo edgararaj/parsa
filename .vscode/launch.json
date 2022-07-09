@@ -9,9 +9,9 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceRoot}/build_debug/parsa.exe",
-            "args": ["arroz.txt"],
+            "args": ["test.txt"],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/",
+            "cwd": "${workspaceFolder}/test_files",
             "environment": [],
         }
     ]

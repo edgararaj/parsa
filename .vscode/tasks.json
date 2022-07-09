@@ -17,7 +17,7 @@
         {
             "type": "shell",
             "label": "build_debug",
-            "command": "build.py debug test",
+            "command": "build.py debug",
             "problemMatcher": [
                 "$msCompile"
             ],
