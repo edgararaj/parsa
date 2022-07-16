@@ -1,4 +1,8 @@
+debug = "debug" in argv or "test" in argv
+test = "test" in argv
+
 prj_name = "parsa"
+if debug: prj_name += "-debug"
 
 def compile():
     test_main = f"{src_dir}/test/test_main.cpp" if test else ""
@@ -8,9 +12,6 @@ def compile():
         """
     except: pass
     return not error_code
-
-debug = "debug" in argv or "test" in argv
-test = "test" in argv
 
 src_dir = f"{script_dir}/src/"
 if debug:
