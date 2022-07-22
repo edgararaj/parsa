@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceRoot}/build_debug/parsa-debug.exe",
-            "args": ["test.txt", "-o", "genaro/arroz.txt"],
+            "args": ["test.txt", "-o", "sqrrr.txt"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/test_files",
             "environment": [],

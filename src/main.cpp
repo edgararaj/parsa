@@ -233,7 +233,8 @@ CanonicalSelectorResult get_canonical_selector(wchar_t* dest, const size_t dest_
 	if (wcslcpy(dest, rel_path, dest_count) >= dest_count)
 		return file_too_large_error();
 
-	if (GetFileAttributesW(dest) & FILE_ATTRIBUTE_DIRECTORY)
+	const auto file_attrs = GetFileAttributesW(dest);
+	if (file_attrs != INVALID_FILE_ATTRIBUTES && file_attrs & FILE_ATTRIBUTE_DIRECTORY)
 	{
 		if (abs_path_file_part)
 		{
